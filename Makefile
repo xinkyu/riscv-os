@@ -26,8 +26,8 @@ OBJS = \
     kernel/entry.o \
     kernel/main.o \
     kernel/uart.o \
+    kernel/console.o \
     kernel/printf.o
-
 # 5. 默认构建目标
 # 当直接运行 make 时，会执行这个规则
 all: kernel.elf

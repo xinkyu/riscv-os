@@ -1,9 +1,11 @@
 // kernel/defs.h
 
-// uart.c 中声明的函数
-void uart_putc(char c);
-void uart_puts(const char *s);
+// console.c
+void cons_putc(char c);
 
-// printf.c 中声明的函数
+// printf.c
 void printf(const char *fmt, ...);
 void clear_screen();
+
+// uart.c
+void uart_putc(char c);
