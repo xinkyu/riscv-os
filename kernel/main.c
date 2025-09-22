@@ -1,12 +1,23 @@
 // kernel/main.c
+#include "defs.h"
 
-// 声明 uart.c 中的 uart_puts 函数，以便在这里调用
-void uart_puts(const char *s);
-
-// 内核的 C 语言入口函数
 void kmain(void) {
-    uart_puts("Hello OS\n");
+    clear_screen(); // 清屏
 
-    // 无限循环，让操作系统保持运行
+    // 测试用例设计 
+    printf("===== Begin printf test =====\n");
+    printf("Testing basic integer: %d\n", 42); 
+    printf("Testing negative integer: %d\n", -123); 
+    printf("Testing zero: %d\n", 0); 
+    printf("Testing hexadecimal: 0x%x\n", 0xABCDEF); 
+    printf("Testing string: %s\n", "Hello, RISC-V!"); 
+    printf("Testing percent sign: %%\n"); 
+
+    // 边界条件测试 
+    printf("\n===== Begin edge case test =====\n");
+    printf("Testing INT_MAX: %d\n", 2147483647); 
+    printf("Testing NULL string: %s\n", (char*)0); 
+    printf("Testing empty string: %s\n", ""); 
+
     while (1);
 }

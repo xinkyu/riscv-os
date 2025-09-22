@@ -1,4 +1,4 @@
-# 从零构建操作系统 - RISC-V 专案
+# 从零构建操作系统
 
 本专案是武汉大学《操作系统实践A》课程的成果。
 目标是从零开始，基于 RISC-V 架构，逐步实现一个迷你的操作系统核心。
@@ -15,9 +15,9 @@
 
 ## 开发环境
 
-* [cite_start]**操作系统**: Ubuntu 22.04 LTS [cite: 2541]
-* [cite_start]**工具链**: riscv64-unknown-elf-gcc [cite: 2990]
-* [cite_start]**模拟器**: QEMU (qemu-system-riscv64) [cite: 2989]
+* **操作系统**: Ubuntu 22.04 LTS 
+* **工具链**: riscv64-unknown-elf-gcc 
+* **模拟器**: QEMU (qemu-system-riscv64) 
 
 ## 编译与执行
 
