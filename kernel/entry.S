@@ -7,8 +7,27 @@
 
 _start:
     # 设置栈指针 (sp)。我们为栈预留了 4KB 空间。
-    #  将stack_top 的地址加载到 sp 寄存器中。
+    # 将stack_top 的地址加载到 sp 寄存器中。
     la sp, stack_top
+
+    # --- 新增代码：清零 BSS 段 ---
+    # 加载 BSS 段的起始和结束地址
+    la a0, __bss_start
+    la a1, __bss_end
+
+clear_bss_loop:
+    # 比较 a0 和 a1，如果 a0 >= a1，说明 BSS 段已全部清零，跳转到 clear_bss_done
+    bge a0, a1, clear_bss_done
+    # 将 0 存入 a0 指向的内存地址（8字节/64位）
+    # RISC-V中，sd (store double word) 指令用于写入8字节
+    sd zero, 0(a0)
+    # 将 a0 的地址增加 8，指向下一个8字节
+    addi a0, a0, 8
+    # 无条件跳转回循环开始处
+    j clear_bss_loop
+
+clear_bss_done:
+    # --- 新增代码结束 ---
 
     # 调用C语言的主函数 kmain
     call kmain
@@ -18,7 +37,6 @@ halt:
     j halt
 
 # 在 .bss 段中为我们的栈保留 4096 字节的空间。
-
 .section .bss
 .align 16           # 16字节对齐
 stack_bottom:
