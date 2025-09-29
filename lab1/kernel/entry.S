@@ -6,11 +6,11 @@
 .global _start
 
 _start:
-    # 设置栈指针 (sp)。我们为栈预留了 4KB 空间。
-    # 将stack_top 的地址加载到 sp 寄存器中。
+    # 设置栈指针 (sp)。操作系统需要一个栈来保存函数调用的返回地址、局部变量等。
+    # 我们为栈预留了 4KB 空间，stack_top 是这段空间的最高地址
     la sp, stack_top
 
-    # --- 新增代码：清零 BSS 段 ---
+    # 清零 BSS 段 
     # 加载 BSS 段的起始和结束地址
     la a0, __bss_start
     la a1, __bss_end
@@ -27,7 +27,6 @@ clear_bss_loop:
     j clear_bss_loop
 
 clear_bss_done:
-    # --- 新增代码结束 ---
 
     # 调用C语言的主函数 kmain
     call kmain
@@ -36,7 +35,7 @@ clear_bss_done:
 halt:
     j halt
 
-# 在 .bss 段中为我们的栈保留 4096 字节的空间。
+# 在 .bss 段中为我们的栈保留 4096 字节的空间。该段用于存放未初始化的全局变量和静态变量
 .section .bss
 .align 16           # 16字节对齐
 stack_bottom:
