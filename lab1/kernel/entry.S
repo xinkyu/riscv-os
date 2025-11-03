@@ -11,6 +11,7 @@ _start:
     la sp, stack_top
 
     # 清零 BSS 段 
+    #未初始化的全局变量和静态变量在程序开始运行时，其值应为 0，若不清零则值为内存中的未知值。
     # 加载 BSS 段的起始和结束地址
     la a0, __bss_start
     la a1, __bss_end
