@@ -27,6 +27,7 @@ typedef uint64 *pagetable_t; // 页表
 
 // 从 PTE 中提取物理页号 (PPN)
 #define PTE2PA(pte) (((pte) >> 10) << 12)
+#define PTE_PA(pte) PTE2PA(pte)  // 添加别名以支持测试代码
 
 // 从物理地址构建 PTE
 #define PA2PTE(pa) ((((uint64)pa) >> 12) << 10)
@@ -41,7 +42,7 @@ typedef uint64 *pagetable_t; // 页表
 #define MAKE_SATP(pagetable) (SATP_SV39 | (((uint64)pagetable) >> 12))
 
 //
-// --- Lab4 新增：中断和异常相关的 CSR 定义 ---
+// 中断和异常相关的 CSR 定义
 //
 
 // sstatus (Supervisor Status Register)
@@ -112,6 +113,13 @@ static inline void w_satp(uint64 x) {
 // 刷新 TLB (Translation Lookaside Buffer)
 static inline void sfence_vma() {
     asm volatile("sfence.vma zero, zero");
+}
+
+// 读取 time CSR (用于性能测试)
+static inline uint64 r_time() {
+    uint64 x;
+    asm volatile("csrr %0, time" : "=r" (x));
+    return x;
 }
 
 #endif // __RISCV_H__

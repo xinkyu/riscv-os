@@ -2,7 +2,7 @@
 #include <stdarg.h> // 引入标准库头文件，用于处理可变参数
 #include "defs.h"   // 引入我们自己的函数声明
 
-// 静态辅助函数，用于打印不同进制的数字。'static' 表示这个函数只能在本文件内被调用。
+// 静态辅助函数，用于打印不同进制的数字。
 static void print_int(long long xx, int base, int sign) {
     char digits[] = "0123456789abcdef"; // 用于进制转换的字符映射表
     char buf[32]; // 缓冲区，用于存放转换后的数字字符串（倒序）

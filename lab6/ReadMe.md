@@ -1,44 +1,46 @@
-# 实验五：进程管理与调度
+# 实验六：系统调用 (System Calls)
 
 ## 实验目标
 
-本实验的目标是为内核引入进程的概念，建立一个完整的进程管理框架，并实现一个基于时钟中断的抢占式轮转（Round-Robin）调度器。
+本实验的目标是为内核搭建一个完整的“系统调用”框架。这是连接用户态程序和内核态服务的桥梁。通过 `ecall` 指令，未来的用户程序将能够请求内核执行特权操作，例如获取进程ID或读写文件。
 
 ## 核心实现
 
-### 1. 进程抽象 (`kernel/proc.h`)
+### 1. 陷阱处理 (`kernel/trap.c`, `kernel/kernelvec.S`)
 
-* **`struct context`**: 定义了进程切换时需要保存和恢复的 CPU 寄存器（`ra`, `sp` 和 `s0-s11`）。
-* **`enum procstate`**: 定义了进程的生命周期状态，包括 `UNUSED`, `USED`, `SLEEPING`, `RUNNABLE`, `RUNNING`, `ZOMBIE`。
-* **`struct proc`**: 定义了进程控制块（PCB），它包含了进程的状态、PID、内核栈、页表以及调度上下文 `context`。
-* **`struct cpu`**: 用于支持多核（尽管本实验只用单核），存储当前CPU正在运行的进程和调度器自己的上下文。
+* **`kernelvec.S`**: 修改了汇编入口点，使其在保存所有寄存器到栈上后，将栈指针（`sp`，即 `trapframe` 的地址）作为第一个参数（`a0`）传递给 C 语言的 `kerneltrap` 函数。
+* **`kernel/trap.c`**: 修改了 `kerneltrap` 函数，使其能够检查 `scause` 寄存器。当 `scause` 为 `8` 时，意味着这是一次来自用户态的 `ecall`。
+* **`sepc` 处理**: 在 `scause == 8` 的分支中，我们将 `sepc`（异常程序计数器）加 4。这确保了当 `sret` 返回时，程序会从 `ecall` 的*下一条*指令继续执行，而不是再次陷入 `ecall` 死循环。
 
-### 2. 上下文切换 (`kernel/swtch.S`)
+### 2. `trapframe` 结构体 (`kernel/proc.h`)
 
-实现了 `swtch(old_ctx, new_ctx)` 函数。这是一个纯汇编函数，负责：
-1. 将当前进程的 `ra`, `sp` 和 `s0-s11` 寄存器保存到 `old_ctx` 结构体中。
-2. 从 `new_ctx` 结构体中加载下一个进程的寄存器。
-3. 执行 `ret` 指令，跳转到 `new_ctx->ra` 所指向的地址，完成切换。
+* 定义了 `struct trapframe`。这个 C 结构体的字段顺序**严格匹配** `kernelvec.S` 中寄存器的保存顺序。
+* 这使得 `kerneltrap` (C代码) 能够轻松地通过 `tf->a7` 访问系统调用号，或通过 `tf->a0` 访问参数。
+* 修改了 `allocproc`，使 `proc->trapframe` 指针指向内核栈的顶部，为陷阱帧预留了空间。
 
-### 3. 进程管理 (`kernel/proc.c`)
+### 3. 系统调用分发器 (`kernel/syscall.c`, `kernel/syscall.h`)
 
-* **`procinit`**: 初始化进程表，将所有 `proc` 结构体标记为 `UNUSED`。
-* **`allocproc`**: 遍历进程表，查找一个 `UNUSED` 的进程。如果找到，为其分配 PID 和一个内核栈。
-* **初始化上下文**: `allocproc` 将新进程的 `context.ra` 设置为 `forkret` 函数，`context.sp` 设置为其内核栈的栈顶。当 `swtch` 切换到该进程时，它将从 `forkret` 开始执行。
-* **`userinit`**: 调用 `allocproc` 创建第一个内核态进程 `initproc`，并将其状态设置为 `RUNNABLE`。
-* **`scheduler`**: 核心调度器循环。它不断地遍历进程表，查找状态为 `RUNNABLE` 的进程，并通过 `swtch` 切换到该进程执行。
-* **`yield`**: 进程主动放弃 CPU。它将自身状态设为 `RUNNABLE`，然后调用 `sched` 切换到调度器。
-* **`sleep` / `wakeup`**: 实现了基本的睡眠和唤醒原语，用于进程同步。
+* **`syscall.h`**: 创建了新文件，用于定义所有系统调用的编号（如 `SYS_getpid`, `SYS_write` 等）。
+* **`syscall.c`**: 创建了核心的分发机制：
+    * `syscalls[]`: 一个函数指针数组，将系统调用编号映射到其实际的内核实现函数。
+    * `syscall()`: `kerneltrap` 调用的总入口。它读取 `tf->a7` 中的编号，在数组中查找对应的函数并执行，最后将返回值存入 `tf->a0`。
 
-### 4. 抢占式调度 (`kernel/trap.c` 和 `kernel/main.c`)
+### 4. 系统调用实现 (`kernel/sysproc.c`)
 
-* **`main` 函数**：在完成所有初始化后，不再是死循环，而是调用 `scheduler()` 函数，将控制权交给调度器。
-* **`kerneltrap` 函数**：修改了时钟中断的处理逻辑。当中断发生时，除了打印 "tick"，还会调用 `yield()` 。这使得正在 `RUNNING` 的进程被强制放弃 CPU，重新变为 `RUNNABLE`，从而实现了抢占。
+* 创建了新文件，用于存放 `sys_` 系列函数的具体实现。
+* 作为第一个实现，添加了 `sys_getpid()`，它通过 `myproc()` 获取当前进程的 PID。
+
+### 5. 关键并发问题修复 (Debugging)
+
+在集成实验六时，暴露了实验五调度器中的多个并发 Bug，本次实验一并进行了修复：
+
+* **`printf` 死锁**: 修复了 `printf`（在 `scheduler` 中）被 `printf`（在 `kerneltrap` 中）重入导致的死锁。通过在 `printf` 函数体前后添加 `intr_off()` 和 `w_sstatus(old_sstatus)`，确保了 `printf` 的原子性。
+* **调度器活锁**: 修复了 `kmain` 过早开启中断导致 `scheduler` 无法执行的问题。将 `w_sstatus(..|SIE)` 调用从 `kmain` 移至 `forkret`，确保第一个进程启动后才开始响应时钟中断。
+* **`sched()` 状态机 Bug**: 修复了 `yield` 将状态设为 `RUNNABLE` 后 `sched` 却检查 `RUNNING` 导致的调度失败。`sched()` 现在被修改为无条件切换上下文。
 
 ## 实验结果
 
-执行 `make run` 后，内核启动，会完成所有初始化，并创建 `initproc`。调度器开始运行。我们可以观察到：
-1. 终端周期性地打印 "tick: ..." 信息，表明时钟中断正常工作。
-2. `initproc` 启动后打印 "initproc: starting..."。
-3. 由于时钟中断不断触发 `yield`，`initproc` 和调度器（`scheduler`）的上下文在后台不断切换，CPU 在 `scheduler` 循环和 `initproc` 的 `yield` 循环之间交替执行，证明了抢占式调度成功运行。
-
+* 由于目前还没有加载用户态程序的能力，我们无法通过 `ecall` 测试完整的陷阱路径。
+* **验证**：在 `forkret` (第一个内核进程 `initproc` 的入口) 中，**直接调用**内核函数 `sys_getpid()`。
+* **结果**：内核成功启动，调度器正常运行，`initproc` 打印出 `[Lab6 Test] SUCCESS! sys_getpid is linked.`。
+* 在修复了并发 Bug 后，系统不再打印 "sched: process not running"，并且在 `initproc` 和 `scheduler` 之间稳定地进行上下文切换，成功在空闲状态下响应时钟中断（打印 "tick"）。

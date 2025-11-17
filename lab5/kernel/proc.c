@@ -126,11 +126,14 @@ void yield(void) {
 }
 
 // forkret: allocproc 设置的返回地址
+// forkret: allocproc 设置的返回地址
 void forkret(void) {
-    // 这是一个占位符。在真正的 fork 实现中，这里会
-    // 负责返回到用户空间。在实验五中，第一个进程
-    // (initproc) 会进入这里，然后可以让他循环 yield。
     printf("initproc: starting... running in kernel mode.\n");
+    
+    // 调用 Lab5 测试套件
+    run_lab5_tests();
+    
+    // 不会到达这里
     while(1) {
         yield();
     }

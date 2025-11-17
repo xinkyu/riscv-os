@@ -1,15 +1,14 @@
 # kernel/kernelvec.S
 
 .section .text
-.align 2
-.global kernelvec # 声明为全局符号，供 trap.c 使用
+.align 4          # 16字节对齐（2^4 = 16）
+.global kernelvec
 
 kernelvec:
-    # 1. 保存所有通用寄存器到栈上
-    #    sp 已经由 entry.S 初始化，我们可以直接使用
+    # 保存所有通用寄存器到栈上
     addi sp, sp, -256
     sd ra, 0(sp)
-    sd sp, 8(sp) # 保存 sp 自身
+    sd sp, 8(sp)
     sd gp, 16(sp)
     sd tp, 24(sp)
     sd t0, 32(sp)
@@ -40,12 +39,11 @@ kernelvec:
     sd t5, 232(sp)
     sd t6, 240(sp)
 
-    # 2. 调用 C 语言实现的陷阱处理函数
+    # 调用 C 语言实现的陷阱处理函数
     call kerneltrap
 
-    # 3. 从栈上恢复所有通用寄存器
+    # 从栈上恢复所有通用寄存器
     ld ra, 0(sp)
-    # ld sp, 8(sp) # 不恢复 sp，因为我们需要用它来弹出栈
     ld gp, 16(sp)
     ld tp, 24(sp)
     ld t0, 32(sp)
@@ -77,5 +75,5 @@ kernelvec:
     ld t6, 240(sp)
     addi sp, sp, 256
 
-    # 4. 从 S 模式陷阱返回
+    # 从 S 模式陷阱返回
     sret

@@ -28,7 +28,7 @@ typedef uint64 *pagetable_t; // 页表
 // 从 PTE 中提取物理页号 (PPN)
 // PPN 占 PTE 的高44位 (53:10)
 #define PTE2PA(pte) (((pte) >> 10) << 12)
-
+#define PTE_PA(pte) PTE2PA(pte) 
 // 从物理地址构建 PTE
 // PA 占 PTE 的高44位
 #define PA2PTE(pa) ((((uint64)pa) >> 12) << 10)

@@ -70,6 +70,12 @@ void printf(const char *fmt, ...) {
             case '%': // 输出一个 '%'
                 cons_putc('%');
                 break;
+                // 在 printf 函数的 switch 语句中添加:
+            case 'p': // 指针（十六进制）
+                cons_putc('0');
+                cons_putc('x');
+                print_int(va_arg(args, unsigned long long), 16, 0);
+                break;
             default: // 不认识的格式，原样输出
                 cons_putc('%');
                 cons_putc(c);

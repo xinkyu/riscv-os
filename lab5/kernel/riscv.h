@@ -114,4 +114,5 @@ static inline void sfence_vma() {
     asm volatile("sfence.vma zero, zero");
 }
 
+
 #endif // __RISCV_H__

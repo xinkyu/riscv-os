@@ -18,7 +18,8 @@ OBJS = \
     kernel/trap.o \
     kernel/kernelvec.o \
     kernel/proc.o \
-    kernel/swtch.o
+    kernel/swtch.o \
+    kernel/test.o
 
 all: kernel.elf
 

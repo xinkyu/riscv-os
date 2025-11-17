@@ -16,7 +16,8 @@ OBJS = \
     kernel/kalloc.o \
     kernel/vm.o \
     kernel/trap.o \
-    kernel/kernelvec.o
+    kernel/kernelvec.o \
+    kernel/test.o
 
 all: kernel.elf
 

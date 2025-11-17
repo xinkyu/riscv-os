@@ -40,3 +40,10 @@ void wakeup(void*);
 
 // swtch.S
 void swtch(struct context*, struct context*);
+
+// test.c - Lab5 测试函数
+void run_lab5_tests(void);
+void simple_task(void);
+void cpu_intensive_task(void);
+void producer_task(void);
+void consumer_task(void);

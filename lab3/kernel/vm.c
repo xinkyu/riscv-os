@@ -34,6 +34,42 @@ static pte_t *walk(pagetable_t pagetable, uint64 va, int alloc) {
     return &pagetable[VPN(va, 0)];
 }
 
+// ===== 新增: 用于测试的公开函数 =====
+
+// 创建一个新的空页表
+pagetable_t create_pagetable(void) {
+    pagetable_t pt = (pagetable_t)kalloc();
+    if (pt == 0) {
+        return 0;
+    }
+    // 清零
+    for (int i = 0; i < PGSIZE / sizeof(pte_t); i++) {
+        pt[i] = 0;
+    }
+    return pt;
+}
+
+// 映射单个页面
+int map_page(pagetable_t pt, uint64 va, uint64 pa, int perm) {
+    pte_t *pte = walk(pt, va, 1);
+    if (pte == 0) {
+        return -1;
+    }
+    if (*pte & PTE_V) {
+        printf("map_page: remap is not supported\n");
+        return -1;
+    }
+    *pte = PA2PTE(pa) | perm | PTE_V;
+    return 0;
+}
+
+// 查找虚拟地址对应的PTE（不分配）
+pte_t *walk_lookup(pagetable_t pt, uint64 va) {
+    return walk(pt, va, 0);
+}
+
+// ===== 原有函数 =====
+
 // 将一段虚拟地址映射到物理地址
 int mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm) {
     uint64 a, last;

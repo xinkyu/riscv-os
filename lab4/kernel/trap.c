@@ -2,55 +2,63 @@
 #include "defs.h"
 #include "riscv.h"
 
-// 在 kernelvec.S 中定义的汇编入口点
 extern void kernelvec();
 
-static uint64 tick_counter = 0;
+static volatile uint64 tick_counter = 0;
+static volatile uint64 total_interrupt_count = 0;
 
-// 初始化陷阱处理
+// SBI 调用：设置下一次 timer 中断
+// a7 = 0 (set_timer extension)
+// a6 = 0 (set_timer function)
+// a0 = 时间值
+static inline void sbi_set_timer(uint64 stime) {
+    register uint64 a7 asm("a7") = 0;  // EID: Timer Extension
+    register uint64 a6 asm("a6") = 0;  // FID: set_timer
+    register uint64 a0 asm("a0") = stime;
+    asm volatile("ecall" : "+r"(a0) : "r"(a6), "r"(a7) : "memory");
+}
+
 void trap_init(void) {
-    // 将 Supervisor 模式的陷阱处理程序地址设置为 kernelvec
     w_stvec((uint64)kernelvec);
     printf("trap_init: stvec set to %p\n", kernelvec);
 }
 
-// 时钟中断初始化
 void clock_init(void) {
-    // 开启 Supervisor 模式下的时钟中断
+    // 设置第一次 timer 中断（当前时间 + 一个时间间隔）
+    // 这会清除待处理的中断
+    uint64 next_timer = r_time() + 100000;  // 100000 cycles later
+    sbi_set_timer(next_timer);
+    
+    // 然后启用 timer 中断
     w_sie(r_sie() | SIE_STIE);
-    printf("clock_init: supervisor timer interrupt enabled.\n");
 }
 
-// 内核态的陷阱处理函数，由 kernelvec.S 调用
+uint64 get_time(void) {
+    return r_time();
+}
+
+uint64 get_interrupt_count(void) {
+    return total_interrupt_count;
+}
+
 void kerneltrap() {
     uint64 scause = r_scause();
-    uint64 sepc = r_sepc();
 
-    // 判断是中断还是异常
-    if (scause & (1L << 63)) { // 最高位为1，表示是中断
-        uint64 interrupt_type = scause & 0x7FFFFFFFFFFFFFFF;
+    if (scause & (1L << 63)) {
+        // 这是中断
+        uint64 cause = scause & 0x7FFFFFFFFFFFFFFF;
         
-        // 我们只处理 Supervisor 模式的时钟中断
-        if (interrupt_type == 5) {
-            // 每100次中断打印一次信息
-            if (++tick_counter % 100 == 0) {
-                printf("tick: %d\n", tick_counter);
-            }
-
-            // RISC-V M-mode OpenSBI 会自动为我们设置下一次时钟中断,
-            // 所以我们不需要手动操作 mtimecmp。
-            // 只需清除 sip 寄存器中的 STIP 位即可。
-            asm volatile("csrc sip, %0" : : "r"(1L << 5));
-
-        } else {
-            printf("kerneltrap: unhandled supervisor interrupt type %d\n", interrupt_type);
+        if (cause == 5) {
+            // 时钟中断
+            total_interrupt_count++;
+            tick_counter++;
+            
+            // 设置下一次中断（这会自动清除 STIP）
+            uint64 next_timer = r_time() + 100000;
+            sbi_set_timer(next_timer);
         }
-    } else { // 否则是异常
-        printf("kerneltrap: supervisor exception.\n");
-        printf("  scause: 0x%x\n", scause);
-        printf("  sepc:   0x%x\n", sepc);
-        
-        // 异常发生，内核宕机
+    } else {
+        // 这是异常 - 死循环
         while (1);
     }
 }

@@ -14,7 +14,8 @@ OBJS = \
     kernel/console.o \
     kernel/printf.o \
     kernel/kalloc.o \
-    kernel/vm.o
+    kernel/vm.o \
+    kernel/test.o
 
 all: kernel.elf
 
