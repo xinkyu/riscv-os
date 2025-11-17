@@ -1,18 +1,20 @@
-// kernel/proc.h
-
+// kernel/proc.h (修正版)
 #ifndef __PROC_H__
 #define __PROC_H__
 
-#include "riscv.h"
+#include "spinlock.h" // For struct spinlock
+#include "riscv.h"    // For pagetable_t, uint64
 
-// 定义进程状态
+// 修复: "未定义标识符 NPROC"
+#define NPROC 64 // 最大进程数
+
+// 修复: "未定义标识符 UNUSED", "RUNNABLE", "SLEEPING", "ZOMBIE"
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
-// 进程的调度上下文，在 swtch.S 中使用
+// 上下文切换
 struct context {
     uint64 ra;
     uint64 sp;
-
     // callee-saved 寄存器
     uint64 s0;
     uint64 s1;
@@ -28,28 +30,46 @@ struct context {
     uint64 s11;
 };
 
-// 每个CPU的状态
+// 修复: "不允许使用指向不完整类型 'struct cpu' 的指针或引用"
 struct cpu {
-    struct proc *proc;      // 当前在此CPU上运行的进程
+    struct proc *proc;      // 当前运行的进程
     struct context context; // 调度器上下文
+    int ncli;               // push_off 的嵌套层数
+    int intena;             // push_off 前的中断状态
 };
 
-extern struct cpu cpus[1]; // 假设单核
-#define mycpu() (&cpus[0])
-#define myproc() (mycpu()->proc)
+extern struct cpu cpus[1]; // 声明
 
-// 进程控制块 (PCB)
+// 修复: "不允许使用指向不完整类型 'struct proc' 的指针或引用"
 struct proc {
-    pagetable_t pagetable; // 进程页表
-    uint64 kstack;         // 内核栈地址
-    enum procstate state;  // 进程状态
-    int pid;               // 进程ID
-    struct context context; // 进程的调度上下文
-    
-    // -- sleep/wakeup --
-    void *chan;            // 如果非零, 表示正在睡眠
+    struct spinlock lock;
+    enum procstate state;   // 进程状态
+    int pid;                // 进程ID
+    struct proc *parent;    // 父进程
+    void *chan;             // 如果非0, 表示正在 sleep
+    int killed;             // 如果非0, 表示被 killing
+    int xstate;             // 退出状态 (供 wait 读取)
+    uint64 kstack;          // 进程的内核栈
+    pagetable_t pagetable;  // 用户页表
+    struct context context; // 上下文
+    void (*entry)(void);    // 内核线程的入口函数
+    char name[16];          // 进程名 (用于调试)
 };
 
-#define NPROC 64 // 最大进程数
+extern struct proc proc[NPROC]; // 声明
+
+// Function Prototypes
+struct proc* myproc(void);
+struct cpu* mycpu(void);
+void procinit(void);
+void scheduler(void) __attribute__((noreturn));
+void sched(void);
+void yield(void);
+void sleep(void *chan, struct spinlock *lk);
+void wakeup(void *chan);
+int  create_process(void (*entry)(void));
+void exit(int status);
+int  wait(int *status);
+void wait_process(int*); // 指南书测试使用的名称
 
 #endif // __PROC_H__

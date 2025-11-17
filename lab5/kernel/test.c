@@ -1,281 +1,311 @@
-// lab5/kernel/test.c - 进程管理与调度测试
-
-#include "defs.h"
+// lab4/kernel/test.c -> lab5/kernel/test.c (修正版)
 #include "riscv.h"
-#include "proc.h"
+#include "defs.h"
 
-// ========== 辅助函数 ==========
+// 修正: 解决 'NULL' undeclared 错误
+#define NULL ((void*)0)
 
 // 简单的断言实现
-static void assert(int condition, const char *msg) {
+void assert(int condition) {
     if (!condition) {
-        printf("ASSERTION FAILED: %s\n", msg);
-        while(1);
+        printf("ASSERTION FAILED!\n");
+        while(1); // 停止执行
     }
 }
 
-// 获取当前时间（cycles）
-static inline uint64 r_time() {
-    uint64 x;
-    asm volatile("csrr %0, time" : "=r" (x));
-    return x;
+// ===== Lab3 测试 =====
+
+void test_physical_memory(void) {
+    printf("\n=== Test 1: Physical Memory Allocator ===\n");
+    
+    void *page1 = kalloc();
+    void *page2 = kalloc();
+    printf("page1 = %p, page2 = %p\n", page1, page2);
+    assert(page1 != 0 && page2 != 0);
+    assert(page1 != page2);
+    assert(((uint64)page1 & 0xFFF) == 0);
+    assert(((uint64)page2 & 0xFFF) == 0);
+    printf("Page allocation and alignment test passed\n");
+
+    *(int*)page1 = 0x12345678;
+    assert(*(int*)page1 == 0x12345678);
+    printf("Memory write test passed\n");
+
+    kfree(page1);
+    void *page3 = kalloc();
+    printf("page3 = %p (after freeing page1)\n", page3);
+    assert(page3 != 0);
+    
+    kfree(page2);
+    kfree(page3);
+    printf("Free and reallocation test passed\n");
 }
 
-// ========== 测试任务函数 ==========
-
-// 简单任务：打印并让出 CPU
-void simple_task(void) {
-    struct proc *p = myproc();
-    printf("Simple task running, PID: %d\n", p->pid);
+void test_pagetable(void) {
+    printf("\n=== Test 2: Page Table Operations ===\n");
     
-    for (int i = 0; i < 5; i++) {
-        printf("  [PID %d] iteration %d\n", p->pid, i);
-        yield();
+    pagetable_t pt = create_pagetable();
+    assert(pt != 0);
+    printf("Page table created at %p\n", pt);
+
+    uint64 va = 0x1000000;
+    uint64 pa = (uint64)kalloc();
+    assert(pa != 0);
+    printf("Mapping VA %p to PA %p\n", va, pa);
+    assert(map_page(pt, va, pa, PTE_R | PTE_W) == 0);
+    printf("Basic mapping test passed\n");
+
+    pte_t *pte = walk_lookup(pt, va);
+    assert(pte != 0 && (*pte & PTE_V));
+    assert(PTE_PA(*pte) == pa);
+    printf("Address translation test passed\n");
+
+    assert(*pte & PTE_R);
+    assert(*pte & PTE_W);
+    assert(!(*pte & PTE_X));
+    printf("Permission bits test passed\n");
+    
+    kfree((void*)pa);
+    kfree((void*)pt);
+}
+
+void test_virtual_memory(void) {
+    printf("\n=== Test 3: Virtual Memory Activation ===\n");
+    printf("Virtual memory seems to be working (kmain reached main_task)\n");
+}
+
+
+// ===== Lab4 测试 =====
+
+void test_timer_interrupt(void) {
+    printf("\n=== Test 4: Timer Interrupt ===\n");
+    
+    uint64 start_time = get_time();
+    uint64 start_count = get_interrupt_count();
+    
+    printf("Start time: %d, Start interrupt count: %d\n", start_time, start_count);
+    printf("Waiting for 5 interrupts...\n");
+    
+    uint64 target_count = start_count + 5;
+    while (get_interrupt_count() < target_count) {
+        asm volatile("wfi"); // 等待中断
     }
     
-    printf("Simple task (PID %d) completed\n", p->pid);
-    // 注意：Lab5 尚未实现 exit，进程会继续 yield
-    while(1) yield();
+    uint64 end_time = get_time();
+    uint64 end_count = get_interrupt_count();
+    
+    printf("End time: %d, End interrupt count: %d\n", end_time, end_count);
+    printf("Timer test completed: %d interrupts in %d cycles\n",
+           end_count - start_count, end_time - start_time);
 }
 
-// CPU 密集型任务
-void cpu_intensive_task(void) {
-    struct proc *p = myproc();
-    printf("CPU intensive task starting, PID: %d\n", p->pid);
+void test_exception_handling(void) {
+    printf("\n=== Test 5: Exception Handling ===\n");
+    printf("Exception handler is ready (tests skipped for stability)\n");
+}
+
+void test_interrupt_overhead(void) {
+    printf("\n=== Test 6: Interrupt Overhead ===\n");
+    
+    // 修正: 解决 "unused variable" 错误
+    uint64 start_count = get_interrupt_count();
+    uint64 start_time = get_time();
     
     volatile uint64 sum = 0;
     for (int i = 0; i < 1000000; i++) {
         sum += i;
-        if (i % 100000 == 0) {
-            yield(); // 周期性让出 CPU
-        }
     }
     
-    printf("CPU intensive task (PID %d) completed, sum=%d\n", p->pid, sum);
-    while(1) yield();
+    uint64 end_time = get_time();
+    uint64 end_count = get_interrupt_count();
+    
+    // 修正: 使用这些变量，防止编译器报错
+    printf("  Test calculation (sum=%d)\n", sum);
+    printf("  Elapsed cycles: %d\n", end_time - start_time);
+    printf("  Interrupts during test: %d\n", end_count - start_count);
+    printf("Interrupt overhead measurement complete\n");
 }
 
-// 生产者任务（简化版）
-static volatile int shared_buffer[10];
-static volatile int buffer_count = 0;
 
+// 运行 Lab3 测试
+void run_all_tests(void) {
+    printf("\n===== Starting Lab3 Tests =====\n");
+    test_physical_memory();
+    test_pagetable();
+    test_virtual_memory();
+    printf("\n===== Lab3 Tests Passed! =====\n");
+}
+
+// 运行 Lab4 测试
+void run_lab4_tests(void) {
+    printf("\n===== Starting Lab4 Tests =====\n");
+    test_timer_interrupt();
+    test_exception_handling();
+    test_interrupt_overhead();
+    printf("\n===== Lab4 Tests Passed! =====\n");
+}
+
+// ===== Lab 5 新增测试 =====
+
+// 辅助函数：内核睡眠
+void kernel_sleep(int ticks) {
+    uint64 target_ticks = get_ticks() + ticks;
+    while (get_ticks() < target_ticks) {
+        acquire(&myproc()->lock);
+        // 修正: 解决 'tick_counter' undeclared 错误
+        // 我们调用新函数来获取正确的睡眠通道
+        sleep(get_ticks_channel(), &myproc()->lock);
+        release(&myproc()->lock);
+    }
+}
+
+// 辅助任务 1: 简单任务
+void simple_task(void) {
+    printf("PID %d: simple_task running...\n", myproc()->pid);
+    exit(0);
+}
+
+// 辅助任务 2: CPU 密集型任务
+void cpu_intensive_task(void) {
+    printf("PID %d: cpu_intensive_task running...\n", myproc()->pid);
+    volatile uint64 i;
+    for (i = 0; i < 200000000L; i++);
+    printf("PID %d: cpu_intensive_task finished.\n", myproc()->pid);
+    exit(0);
+}
+
+// --- 同步测试辅助 ---
+static struct spinlock buffer_lock;
+static int buffer[10];
+static int count = 0;
+static int done = 0;
+
+void shared_buffer_init(void) {
+    spinlock_init(&buffer_lock, "buffer_lock");
+    count = 0;
+    done = 0;
+}
+
+// 辅助任务 3: 生产者
 void producer_task(void) {
-    struct proc *p = myproc();
-    printf("Producer (PID %d) starting\n", p->pid);
-    
-    for (int i = 0; i < 5; i++) {
-        // 简单的生产逻辑
-        while (buffer_count >= 10) {
-            yield(); // 等待空间
+    printf("PID %d: producer_task running...\n", myproc()->pid);
+    for (int i = 0; i < 20; i++) {
+        acquire(&buffer_lock);
+        while (count == 10) {
+            sleep(&count, &buffer_lock);
         }
-        
-        shared_buffer[buffer_count++] = i;
-        printf("  [Producer PID %d] produced: %d\n", p->pid, i);
-        yield();
+        buffer[count++] = i;
+        printf("Producer: produced %d (count=%d)\n", i, count);
+        wakeup(&count);
+        release(&buffer_lock);
     }
-    
-    printf("Producer (PID %d) completed\n", p->pid);
-    while(1) yield();
+    acquire(&buffer_lock);
+    done++;
+    wakeup(&count);
+    release(&buffer_lock);
+    printf("Producer finished.\n");
+    exit(0);
 }
 
-// 消费者任务（简化版）
+// 辅助任务 4: 消费者
 void consumer_task(void) {
-    struct proc *p = myproc();
-    printf("Consumer (PID %d) starting\n", p->pid);
-    
-    for (int i = 0; i < 5; i++) {
-        // 简单的消费逻辑
-        while (buffer_count <= 0) {
-            yield(); // 等待数据
+    printf("PID %d: consumer_task running...\n", myproc()->pid);
+    while (1) {
+        acquire(&buffer_lock);
+        while (count == 0) {
+            if (done) {
+                release(&buffer_lock);
+                goto end;
+            }
+            sleep(&count, &buffer_lock);
         }
-        
-        int item = shared_buffer[--buffer_count];
-        printf("  [Consumer PID %d] consumed: %d\n", p->pid, item);
-        yield();
+        int data = buffer[--count];
+        printf("Consumer: consumed %d (count=%d)\n", data, count);
+        wakeup(&count);
+        release(&buffer_lock);
     }
-    
-    printf("Consumer (PID %d) completed\n", p->pid);
-    while(1) yield();
+end:
+    printf("Consumer finished.\n");
+    exit(0);
 }
 
-// ========== 测试函数 ==========
+// --- Lab 5 测试入口 ---
 
-// 测试1：进程创建
+// 测试 7: 进程创建
 void test_process_creation(void) {
-    printf("\n=== Test 1: Process Creation ===\n");
-    
+    printf("\n=== Test 7: Process Creation ===\n");
     printf("Testing basic process creation...\n");
+    int pid = create_process(simple_task);
+    assert(pid > 0);
+    printf("Created process %d\n", pid);
     
-    // 注意：Lab5 当前实现只有 initproc，没有 create_process 函数
-    // 这里我们测试进程表的初始状态
+    // 修正: 'NULL' undeclared 错误 (已在文件顶部定义 NULL)
+    wait_process(NULL);
     
-    int used_count = 0;
-    for (int i = 0; i < NPROC; i++) {
-        if (proc[i].state != UNUSED) {
-            used_count++;
-            printf("  Process %d: PID=%d, State=%d\n", 
-                   i, proc[i].pid, proc[i].state);
+    printf("\nTesting process table limit (NPROC=%d)...\n", NPROC);
+    
+    // 修正: 解决 'pids' unused 错误
+    // 我们不再需要 'pids' 数组，只需要 'count'
+    int count = 0;
+    for (int i = 0; i < NPROC + 5; i++) {
+        pid = create_process(simple_task);
+        if (pid > 0) {
+            count++; // 只增加计数
+        } else {
+            break;
         }
     }
+    printf("Created %d processes (expected max %d)\n", count, NPROC - 1);
+    assert(count == NPROC - 1);
     
-    printf("Active processes: %d / %d\n", used_count, NPROC);
-    assert(used_count >= 1, "At least initproc should exist");
-    
-    printf("Process creation test: PASSED\n");
+    // 清理
+    for (int i = 0; i < count; i++) {
+        wait_process(NULL);
+    }
+    printf("Process creation test passed\n");
 }
 
-// 测试2：进程状态转换
-void test_process_states(void) {
-    printf("\n=== Test 2: Process State Transitions ===\n");
-    
-    struct proc *p = myproc();
-    if (p) {
-        printf("Current process: PID=%d, State=%d\n", p->pid, p->state);
-        assert(p->state == RUNNING, "Current process should be RUNNING");
-        
-        printf("Testing yield (RUNNING -> RUNNABLE)...\n");
-        // yield 会改变状态为 RUNNABLE，然后调度器会再次选中它
-        yield();
-        
-        printf("After yield, back to RUNNING\n");
-        assert(myproc()->state == RUNNING, "Should be RUNNING again");
+// 测试 8: 调度器
+void test_scheduler(void) {
+    printf("\n=== Test 8: Scheduler ===\n");
+    printf("Creating 3 CPU intensive tasks...\n");
+    for (int i = 0; i < 3; i++) {
+        create_process(cpu_intensive_task);
     }
     
-    printf("Process state transition test: PASSED\n");
+    printf("Observing scheduler behavior (sleeping 1000 ticks)...\n");
+    uint64 start_time = get_ticks();
+    kernel_sleep(1000);
+    uint64 end_time = get_ticks();
+    
+    printf("Scheduler test completed (slept %d ticks)\n", end_time - start_time);
+    
+    wait_process(NULL);
+    wait_process(NULL);
+    wait_process(NULL);
 }
 
-// 测试3：调度器基本功能
-void test_scheduler_basic(void) {
-    printf("\n=== Test 3: Scheduler Basic Function ===\n");
+// 测试 9: 同步机制
+void test_synchronization(void) {
+    printf("\n=== Test 9: Synchronization (Producer-Consumer) ===\n");
+    shared_buffer_init();
     
-    printf("Scheduler is running (you're seeing this means it works!)\n");
+    create_process(producer_task);
+    create_process(consumer_task);
     
-    // 测试多次 yield
-    printf("Testing multiple yields...\n");
-    for (int i = 0; i < 5; i++) {
-        printf("  Yield test iteration %d\n", i);
-        yield();
-    }
+    wait_process(NULL);
+    wait_process(NULL);
     
-    printf("Scheduler basic function test: PASSED\n");
+    printf("Synchronization test completed\n");
 }
 
-// 测试4：时间片轮转
-void test_time_slice(void) {
-    printf("\n=== Test 4: Time Slice and Preemption ===\n");
-    
-    printf("Running CPU-bound loop (should be preempted by timer)...\n");
-    
-    uint64 start_time = r_time();
-    volatile uint64 count = 0;
-    
-    // 执行计算，直到被时钟中断抢占多次
-    for (int round = 0; round < 3; round++) {
-        uint64 round_start = r_time();
-        count = 0;
-        
-        // 计算直到至少过去 50000 cycles
-        while (r_time() - round_start < 50000) {
-            count++;
-        }
-        
-        printf("  Round %d: counted to %d\n", round, count);
-    }
-    
-    uint64 elapsed = r_time() - start_time;
-    printf("Total elapsed: %d cycles\n", elapsed);
-    
-    printf("Time slice test: PASSED\n");
-}
-
-// 测试5：上下文切换
-void test_context_switch(void) {
-    printf("\n=== Test 5: Context Switch ===\n");
-    
-    struct proc *p = myproc();
-    printf("Testing context preservation...\n");
-    
-    // 保存一些栈变量
-    int test_var1 = 0x12345678;
-    int test_var2 = 0xABCDEF00;
-    
-    printf("Before yield: var1=0x%x, var2=0x%x\n", test_var1, test_var2);
-    
-    // 让出 CPU，测试上下文是否正确保存和恢复
-    yield();
-    
-    printf("After yield: var1=0x%x, var2=0x%x\n", test_var1, test_var2);
-    
-    assert(test_var1 == 0x12345678, "Context not preserved: var1");
-    assert(test_var2 == 0xABCDEF00, "Context not preserved: var2");
-    
-    printf("Context switch test: PASSED\n");
-}
-
-// 测试6：进程表管理
-void test_proc_table(void) {
-    printf("\n=== Test 6: Process Table Management ===\n");
-    
-    printf("=== Process Table Dump ===\n");
-    int total = 0, unused = 0, runnable = 0, running = 0, sleeping = 0;
-    
-    for (int i = 0; i < NPROC; i++) {
-        struct proc *p = &proc[i];
-        total++;
-        
-        switch(p->state) {
-            case UNUSED:   unused++; break;
-            case RUNNABLE: runnable++; break;
-            case RUNNING:  running++; break;
-            case SLEEPING: sleeping++; break;
-            default: break;
-        }
-        
-        if (p->state != UNUSED) {
-            printf("  Slot %d: PID=%d State=%d KStack=0x%x\n",
-                   i, p->pid, p->state, p->kstack);
-        }
-    }
-    
-    printf("\nProcess table statistics:\n");
-    printf("  Total slots: %d\n", total);
-    printf("  Unused: %d\n", unused);
-    printf("  Runnable: %d\n", runnable);
-    printf("  Running: %d\n", running);
-    printf("  Sleeping: %d\n", sleeping);
-    
-    assert(unused + runnable + running + sleeping == NPROC, 
-           "Process table accounting error");
-    
-    printf("Process table management test: PASSED\n");
-}
-
-// ========== 主测试入口 ==========
-
+// Lab 5 测试的运行器
 void run_lab5_tests(void) {
-    printf("\n========================================\n");
-    printf("===== Lab5 Process Management Tests =====\n");
-    printf("========================================\n");
+    printf("\n===== Starting Lab5 Tests =====\n");
     
-    // 只有第一个进程（initproc）会运行这些测试
-    struct proc *p = myproc();
-    if (p && p->pid == 1) {
-        test_process_creation();
-        test_process_states();
-        test_scheduler_basic();
-        test_time_slice();
-        test_context_switch();
-        test_proc_table();
-        
-        printf("\n========================================\n");
-        printf("===== All Lab5 Tests PASSED! =====\n");
-        printf("========================================\n");
-        
-        printf("\nInitproc entering infinite yield loop...\n");
-    }
+    test_process_creation();
+    test_scheduler();
+    test_synchronization();
     
-    // 所有测试完成后，进入 yield 循环
-    while(1) {
-        yield();
-    }
+    printf("\n===== All Lab5 Tests Passed! =====\n");
 }

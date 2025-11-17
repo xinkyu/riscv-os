@@ -1,4 +1,4 @@
-# lab5/Makefile
+# lab4/Makefile -> lab5/Makefile
 
 TOOLCHAIN = riscv64-unknown-elf-
 CC = $(TOOLCHAIN)gcc
@@ -17,9 +17,10 @@ OBJS = \
     kernel/vm.o \
     kernel/trap.o \
     kernel/kernelvec.o \
+    kernel/test.o \
     kernel/proc.o \
     kernel/swtch.o \
-    kernel/test.o
+    kernel/spinlock.o
 
 all: kernel.elf
 
