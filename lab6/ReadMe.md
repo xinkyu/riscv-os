@@ -1,103 +1,63 @@
-
-# RISC-V 操作系统 Lab 5: 进程管理与调度
-
-本项目是《从零构建操作系统》的第五个实验 [cite: 1063]。
-本实验的目标是引入进程的抽象，实现一个支持多任务的内核 [cite: 1064]。
+# 实验六：系统调用 (System Calls)
 
 ## 实验目标
 
-* 理解进程的抽象，包括进程状态（`UNUSED`, `SLEEPING`, `RUNNABLE`, `RUNNING`, `ZOMBIE`）。
-* 设计并实现进程控制块（`struct proc`）和进程表（`proc[NPROC]`）。
-* 实现内核上下文切换的汇编代码（`swtch.S`）。
-* 实现一个协作式的轮转（Round-Robin）调度器（`scheduler()`）。
-* 实现进程的生命周期管理：`create_process`, `exit`, `wait` 。
-* 实现基础的同步原语：`sleep` 和 `wakeup` 。
+本实验的目标是实现用户态（User Mode）与内核态（Supervisor Mode）之间的交互机制——系统调用。我们将构建核心的系统调用分发框架，实现进程管理和基础 I/O 相关的系统调用，并解决由中断嵌套带来的上下文破坏问题，最终建立一个安全、稳健的内核环境。
 
-## 实现概览
+## 核心实现
 
-### 1. 核心数据结构
+### 1. 系统调用框架
 
-* **`kernel/proc.h`**:
-    * `struct context`: 定义了上下文切换时需要保存的 14 个寄存器（`ra`, `sp` 和 `s0-s11`）。
-    * `enum procstate`: 定义了进程的 5 种状态。
-    * `struct proc`: 核心的进程控制块，包含了进程的内核栈、上下文、状态、PID、父进程指针和锁。
-* **`kernel/spinlock.h`**:
-    * `struct spinlock`: 实现了自旋锁，用于在多核或中断环境中保护共享数据。
+* **陷阱分发 (`kernel/trap.c`)**:
+    * 扩展了 `kerneltrap` 函数以处理 `scause = 8`（来自 S-mode 的环境调用）。
+    * 注意：由于我们目前的测试代码运行在内核态（S-mode），我们使用 `ecall` 指令模拟系统调用过程。
+    * 异常处理后，手动将 `sepc` 增加 4，以跳过 `ecall` 指令，避免无限循环执行同一条指令。
 
-### 2. 进程生命周期
+* **参数获取 (`kernel/syscall.c`)**:
+    * 实现了 `argint`、`argaddr` 等辅助函数，用于从进程的 Trapframe 中提取系统调用参数（存放在 `a0`-`a5` 寄存器中）。
 
-* **`kernel/proc.c`**:
-    * `allocproc()`: 负责从进程表中查找一个 `UNUSED` 的 `proc` 结构体，为其分配内核栈，并初始化上下文，使其准备好在 `proc_entry` 处开始执行。
-    * `create_process()`: `allocproc` 的封装，用于创建一个新的内核线程，并将其状态设置为 `RUNNABLE`。
-    * `exit()`: 进程自我终止，将状态设置为 `ZOMBIE`，并唤醒其父进程。
-    * `wait()`: 父进程调用，用于回收状态为 `ZOMBIE` 的子进程，并释放其资源。
+* **分发器 (`syscall`)**:
+    * 根据 `a7` 寄存器中的系统调用号，在函数指针数组 `syscalls[]` 中查找并执行相应的处理函数。
+    * 将返回值存回 `a0` 寄存器。
 
-### 3. 调度与同步
+### 2. 核心系统调用实现
 
-* **`kernel/swtch.S`**:
-    * `swtch()`: 底层汇编函数，负责原子地保存当前上下文（`old`）并恢复新上下文（`new`）。
-* **`kernel/proc.c`**:
-    * `scheduler()`: 调度器主循环。它不断地遍历进程表，查找 `RUNNABLE` 状态的进程，并通过 `swtch` 切换到它。
-    * `sched()`: 进程让出 CPU 的核心函数，它保存当前进程的上下文，并切换到调度器（`cpu->context`）的上下文。
-    * `yield()`: `sched()` 的一个简单封装，允许进程主动让出 CPU。
-    * `sleep(chan, lk)`: 关键的同步原语。它原子地释放传入的锁 `lk`，将进程状态设为 `SLEEPING`，然后调用 `sched()` 休眠。唤醒后，它会重新获取 `lk`。
-    * `wakeup(chan)`: 遍历进程表，唤醒所有在同一 `chan` 上 `SLEEPING` 的进程，将它们的状态改回 `RUNNABLE`。
+* **进程管理 (`kernel/sysproc.c`)**:
+    * `sys_fork`: 调用 `fork()` 创建子进程。
+    * `sys_exit`: 调用 `exit()` 终止当前进程。
+    * `sys_wait`: 调用 `wait()` 等待子进程结束，并将退出状态写入用户提供的地址。
+    * `sys_getpid`: 返回当前进程的 PID。
 
-### 4. 中断处理
+* **文件操作 (`kernel/sysfile.c`)**:
+    * `sys_write`: 实现了向文件描述符 `1` (stdout) 和 `2` (stderr) 写入数据的功能，底层调用 `cons_putc` 输出到控制台。
 
-* **`kernel/trap.c`**:
-    * 为防止内核栈溢出，已移除时钟中断中的抢占式 `yield()` 调用 。
-    * 内核现在是一个**协作式多任务**内核。
-    * 时钟中断现在的主要职责是递增 `tick_counter` 并 `wakeup` 任何在 `tick_counter` 上 `sleep` 的进程（例如 `kernel_sleep`）。
+### 3. 关键问题修复：嵌套中断与上下文破坏
+
+在压力测试（Test 13）中，我们发现如果在处理系统调用（开启中断）期间发生了时钟中断，会导致内核崩溃。
+
+* **问题根源**: 
+    1. 系统调用进入 `kerneltrap`。
+    2. `intr_on()` 开启中断。
+    3. 时钟中断发生，硬件自动覆盖了 `sepc`（异常程序计数器）和 `sstatus`（状态寄存器）。
+    4. 时钟中断返回后，外层的系统调用处理完毕，准备使用 `sret` 返回。
+    5. 此时 `sepc` 和 `sstatus` 已被污染，导致 `sret` 跳转到了错误的地址或使用了错误的特权级，引发 Kernel Panic。
+
+* **解决方案**:
+    在 `kerneltrap` 中，在调用 `intr_on()` 之前，将入口时的 `sepc` 和 `sstatus` 值保存到内核栈上的局部变量中。在执行 `sret` 之前，从栈中恢复这些寄存器的正确值。
+
+### 4. 安全性增强
+
+为了防止恶意或错误的程序导致内核崩溃，我们在 `sys_write` 中引入了内存检查机制。
+
+* **地址验证 (`validate_addr`)**: 在访问用户传入的指针之前，遍历该内存范围对应的所有页表项。
+* **防御策略**: 如果发现地址未映射或无效（`PTE_V` 为 0），系统调用直接返回 `-1` 错误码，而不是触发 Page Fault 导致内核 Panic。
+
+### 5. 库函数增强
+
+* **`printf`**: 增加了对 `%l` 修饰符（如 `%ld`, `%lu`, `%lx`）的支持，以便正确打印 64 位整数。
 
 ## 编译与运行
 
 ```bash
-# 编译并运行
+# 编译并启动 QEMU
 make run
-````
-
-## 测试结果
-
-所有 Lab 3, Lab 4, 和 Lab 5 的测试均已通过：
-
-```
-===== All Lab4 Tests Passed! =====
-
-===== Starting Lab5 Tests =====
-
-=== Test 7: Process Creation ===
-...
-Created 63 processes (expected max 63)
-...
-Process creation test passed
-
-=== Test 8: Scheduler ===
-...
-PID 66: cpu_intensive_task running...
-PID 66: cpu_intensive_task finished.
-PID 67: cpu_intensive_task running...
-PID 67: cpu_intensive_task finished.
-PID 68: cpu_intensive_task running...
-PID 68: cpu_intensive_task finished.
-Scheduler test completed (slept 1000 ticks)
-
-=== Test 9: Synchronization (Producer-Consumer) ===
-...
-Producer: produced 0 (count=1)
-...
-Consumer: consumed 0 (count=0)
-...
-Producer: produced 19 (count=10)
-Producer finished.
-...
-Consumer: consumed 10 (count=0)
-Consumer finished.
-Synchronization test completed
-
-===== All Lab5 Tests Passed! =====
-
-===== All Labs Complete =====
-Total interrupts received: 1008
-```
-
