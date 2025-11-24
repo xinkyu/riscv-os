@@ -1,0 +1,57 @@
+#ifndef __FS_H__
+#define __FS_H__
+#include "riscv.h"
+
+// 简单的文件系统布局
+// [ boot block | super block | log | inode blocks | free bit map | data blocks ]
+
+#define ROOTINO 1  // root i-number
+#define BSIZE 1024  // block size
+
+// Disk layout:
+// [ boot block | super block | log | inode blocks | free bit map | data blocks ]
+struct superblock {
+  uint magic;      // Must be FSMAGIC
+  uint size;       // Size of file system image (blocks)
+  uint nblocks;    // Number of data blocks
+  uint ninodes;    // Number of inodes.
+  uint nlog;       // Number of log blocks
+  uint logstart;   // Block number of first log block
+  uint inodestart; // Block number of first inode block
+  uint bmapstart;  // Block number of first free map block
+};
+
+#define FSMAGIC 0x10203040
+
+#define NDIRECT 12
+#define NINDIRECT (BSIZE / sizeof(uint))
+#define MAXFILE (NDIRECT + NINDIRECT)
+
+// On-disk inode structure
+struct dinode {
+  short type;           // File type
+  short major;          // Major device number (T_DEVICE only)
+  short minor;          // Minor device number (T_DEVICE only)
+  short nlink;          // Number of links to inode in file system
+  uint size;            // Size of file (bytes)
+  uint addrs[NDIRECT+1];   // Data block addresses
+};
+
+// Inodes per block.
+#define IPB           (BSIZE / sizeof(struct dinode))
+
+// Block containing inode i
+#define IBLOCK(i, sb)     ((i) / IPB + sb.inodestart)
+
+// Bitmap bits per block
+#define BPB           (BSIZE*8)
+
+// [新增] 目录项相关定义
+#define DIRSIZ 14
+
+struct dirent {
+  ushort inum;
+  char name[DIRSIZ];
+};
+
+#endif
