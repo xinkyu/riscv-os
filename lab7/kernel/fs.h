@@ -1,17 +1,14 @@
 #ifndef __FS_H__
 #define __FS_H__
-#include "riscv.h"
+#include "types.h" // 确保包含 types.h
 
-// 简单的文件系统布局
+// Disk layout:
 // [ boot block | super block | log | inode blocks | free bit map | data blocks ]
 
 #define ROOTINO 1  // root i-number
 #define BSIZE 1024  // block size
 
-// Disk layout:
-// [ boot block | super block | log | inode blocks | free bit map | data blocks ]
-// mkfs computes the super block and builds an initial file system. 
-// The super block describes the disk layout:
+// Disk layout parameters
 struct superblock {
   uint magic;      // Must be FSMAGIC
   uint size;       // Size of file system image (blocks)
@@ -48,3 +45,12 @@ struct dinode {
 // Bitmap bits per block
 #define BPB           (BSIZE*8)
 
+// Directory is a file containing a sequence of dirent structures.
+#define DIRSIZ 14
+
+struct dirent {
+  ushort inum;
+  char name[DIRSIZ];
+};
+
+#endif
