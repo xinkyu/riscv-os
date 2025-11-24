@@ -2,6 +2,7 @@
 #include "defs.h"
 
 int sys_getpid(void) {
+    // [关键] 性能测试绝对不能包含 printf
     return myproc()->pid;
 }
 
@@ -10,7 +11,7 @@ int sys_exit(void) {
     if(argint(0, &n) < 0)
         return -1;
     exit(n);
-    return 0; // 不可达
+    return 0; 
 }
 
 int sys_fork(void) {

@@ -12,7 +12,7 @@ extern int sys_read(void);
 extern int sys_open(void);
 extern int sys_close(void);
 
-static int (*syscalls[])(void) = {
+static int (*syscalls[32])(void) = {
     [SYS_fork]    sys_fork,
     [SYS_exit]    sys_exit,
     [SYS_wait]    sys_wait,
@@ -23,8 +23,6 @@ static int (*syscalls[])(void) = {
     [SYS_open]    sys_open,
     [SYS_close]   sys_close,
 };
-
-
 
 int argint(int n, int *ip) {
     struct proc *p = myproc();
@@ -72,25 +70,16 @@ void syscall(void) {
     int num;
     struct proc *p = myproc();
 
-    if (p == 0) {
-        printf("[syscall] FATAL: myproc is NULL\n");
-        while(1);
-    }
-    if (p->trapframe == 0) {
-        printf("[syscall] FATAL: trapframe is NULL\n");
+    if (p == 0 || p->trapframe == 0) {
+        // panic("syscall");
         while(1);
     }
 
     num = p->trapframe->a7;
 
     if(num > 0 && num < sizeof(syscalls)/sizeof(syscalls[0]) && syscalls[num]) {
-        // [调试] 打印即将执行的系统调用
-        // printf("[syscall] PID %d executing %s (num %d)\n", p->pid, syscall_names[num], num);
-        
+        // [关键] 移除这里的 printf
         p->trapframe->a0 = syscalls[num]();
-        
-        // [调试] 系统调用返回
-        // printf("[syscall] PID %d returned %d\n", p->pid, p->trapframe->a0);
     } else {
         printf("pid %d %s: unknown sys call %d\n", p->pid, p->name, num);
         p->trapframe->a0 = -1;

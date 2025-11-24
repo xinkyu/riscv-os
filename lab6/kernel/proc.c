@@ -2,11 +2,12 @@
 #include "defs.h"
 
 struct proc proc[NPROC];
-struct cpu cpus[1]; // 确保定义在这里
+struct cpu cpus[1]; 
 struct proc *initproc;
 static int nextpid = 1;
 
-// [修复] 强制单核
+extern void fork_ret(void);
+
 struct cpu* mycpu(void) {
     return &cpus[0];
 }
@@ -17,12 +18,6 @@ struct proc* myproc(void) {
     struct proc *p = c->proc;
     pop_off();
     return p;
-}
-
-// [新增] 专门给 test.c 用的调试接口，绕过头文件可能存在的问题
-// 直接返回 CPU 0 的当前进程
-struct proc* get_current_proc_debug(void) {
-    return cpus[0].proc;
 }
 
 static void freeproc(struct proc *p) {
@@ -40,7 +35,6 @@ static void freeproc(struct proc *p) {
     p->state = UNUSED;
 }
 
-// 简单的入口点
 void proc_entry(void) {
     struct proc *p = myproc();
     release(&p->lock);
@@ -64,16 +58,17 @@ found:
     p->pid = nextpid++;
     p->state = USED;
 
-    // 分配 trapframe
     if((p->trapframe = (struct trapframe *)kalloc()) == 0){
         freeproc(p);
         release(&p->lock);
         return 0;
     }
-    // 清零 trapframe
+    
+    // 初始化 trapframe
     char *tf = (char*)p->trapframe;
     for(int i=0; i<4096; i++) tf[i] = 0;
 
+    // 分配内核栈
     if((p->kstack = (uint64)kalloc()) == 0){
         freeproc(p);
         release(&p->lock);
@@ -106,7 +101,21 @@ int create_process(void (*entry)(void)) {
     return p->pid;
 }
 
-// fork 实现
+// 修复后的 memmove: 使用 char* 指针 d 和 s
+void *memmove(void *dst, const void *src, uint64 n) {
+    const char *s = src;
+    char *d = dst;
+    if (s < d && s + n > d) {
+        s += n;
+        d += n;
+        while (n-- > 0) *--d = *--s;
+    } else {
+        // [错误修复] 这里之前用了 void* 类型的 dst/src，现在改用 char* 类型的 d/s
+        while (n-- > 0) *d++ = *s++;
+    }
+    return dst;
+}
+
 int fork(void) {
     int i;
     struct proc *np;
@@ -114,8 +123,23 @@ int fork(void) {
 
     if ((np = allocproc()) == 0) return -1;
 
+    // 1. 复制 Trapframe
     *(np->trapframe) = *(p->trapframe);
+
+    // 2. 复制内核栈并重定位 SP
+    memmove((void*)np->kstack, (void*)p->kstack, PGSIZE);
+
+    uint64 sp_offset = p->trapframe->sp - p->kstack;
+    np->trapframe->sp = np->kstack + sp_offset;
+
+    uint64 s0_offset = p->trapframe->s0 - p->kstack;
+    np->trapframe->s0 = np->kstack + s0_offset;
+
+    // 3. 设置子进程返回值
     np->trapframe->a0 = 0;
+
+    // 4. 设置上下文返回地址
+    np->context.ra = (uint64)fork_ret;
 
     for(i = 0; i < 16; i++) np->name[i] = p->name[i];
     np->parent = p;
@@ -137,14 +161,9 @@ void scheduler(void) {
             acquire(&p->lock);
             if (p->state == RUNNABLE) {
                 p->state = RUNNING;
-                c->proc = p; // 设置当前进程
-                
-                // [调试] 确认设置成功
-                // printf("sched: switch to %d\n", p->pid);
-
+                c->proc = p; 
                 swtch(&c->context, &p->context);
-                
-                c->proc = 0; // 清除
+                c->proc = 0; 
             }
             release(&p->lock);
         }
