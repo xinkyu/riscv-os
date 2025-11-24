@@ -52,6 +52,7 @@ struct stack_regs {
 void kerneltrap(uint64 sp_val) {
     uint64 scause = r_scause();
     uint64 sepc = r_sepc();
+    uint64 sstatus = r_sstatus(); // [修复1] 保存入口时的 sstatus
 
     if (scause & (1L << 63)) {
         uint64 cause = scause & 0x7FFFFFFFFFFFFFFF;
@@ -73,6 +74,7 @@ void kerneltrap(uint64 sp_val) {
         struct stack_regs *regs = (struct stack_regs *)sp_val;
 
         if (p->trapframe) {
+            // 复制寄存器到 trapframe ... (省略未变动代码)
             p->trapframe->ra = regs->ra;
             p->trapframe->sp = regs->sp + 256; 
             p->trapframe->gp = regs->gp;
@@ -107,12 +109,20 @@ void kerneltrap(uint64 sp_val) {
             p->trapframe->epc = sepc;
         }
 
-        w_sepc(sepc + 4);
+        // [修复2] 不要在这里写寄存器，因为 intr_on 后的中断会覆盖它们
+        // w_sepc(sepc + 4); 
+        
         if(p->trapframe) p->trapframe->epc += 4;
 
-        intr_on();
+        intr_on(); // 开启中断，危险区开始
         syscall();
+        intr_off(); // 关闭中断，危险区结束
         
+        // [修复3] 恢复被嵌套中断破坏的 CSR 寄存器
+        // 必须恢复 sstatus，否则 sret 可能会错误地返回到 User 模式导致 Page Fault
+        w_sstatus(sstatus); 
+        w_sepc(sepc + 4);   // 恢复正确的返回地址 (跳过 ebreak 指令)
+
         regs->a0 = p->trapframe->a0;
     } 
     else {

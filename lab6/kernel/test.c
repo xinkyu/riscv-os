@@ -87,15 +87,20 @@ void test_parameter_passing(void) {
     printf("Parameter passing test passed\n");
 }
 
-// Test 12: 安全性测试 (暂时注释，防止 Panic)
+
+// Test 12: 安全性测试
 void test_security(void) {
     printf("\n=== Test 12: Security Test ===\n");
     char *invalid_ptr = (char*)0x0; 
-    printf("  Writing to invalid pointer %p... (Skip to avoid panic)\n", invalid_ptr);
-    // int result = stub_write(1, invalid_ptr, 10);
-    // printf("  Result: %d\n", result);
+    printf("  Writing to invalid pointer %p...\n", invalid_ptr);
+    
+    // [修改] 取消注释，并验证结果
+    int result = stub_write(1, invalid_ptr, 10);
+    printf("  Result: %d (Expected: -1)\n", result);
+    
+    assert(result == -1);
+    printf("Security test passed: Invalid pointer correctly rejected\n");
 }
-
 // Test 13: 性能测试
 void test_syscall_performance(void) {
     printf("\n=== Test 13: Syscall Performance ===\n");
@@ -120,6 +125,7 @@ void run_lab6_tests(void) {
     printf("\n===== Starting Lab6 Tests =====\n");
     test_basic_syscalls();
     test_parameter_passing();
+    test_security();
     test_syscall_performance();
     printf("\n===== All Lab6 Tests Passed! =====\n");
 }

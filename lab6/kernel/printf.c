@@ -68,7 +68,6 @@ void printf(const char *fmt, ...) {
             case 'x':
                 print_int(va_arg(args, int), 16, 0);
                 break;
-            // --- 新增对 %p 的支持 ---
             case 'p':
                 print_ptr(va_arg(args, uint64));
                 break;
@@ -81,10 +80,27 @@ void printf(const char *fmt, ...) {
                     cons_putc(*s++);
                 }
                 break;
+            // [新增] 支持 %l 前缀 (如 %ld, %lu)
+            case 'l':
+                c = *++fmt; // 获取 'l' 后面的字符
+                if (c == 'd') {
+                    print_int(va_arg(args, long), 10, 1);
+                } else if (c == 'u') {
+                    print_int(va_arg(args, long), 10, 0); // 无符号十进制
+                } else if (c == 'x') {
+                    print_int(va_arg(args, long), 16, 0);
+                } else {
+                    // 如果是不支持的格式，回退一点
+                    cons_putc('%');
+                    cons_putc('l');
+                    cons_putc(c);
+                }
+                break;
             case '%':
                 cons_putc('%');
                 break;
             default:
+                // 打印未知的格式符
                 cons_putc('%');
                 cons_putc(c);
                 break;
