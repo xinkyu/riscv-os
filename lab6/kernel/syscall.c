@@ -53,7 +53,7 @@ int argaddr(int n, uint64 *ip) {
     }
     return 0;
 }
-
+//从用户态传递的第n个参数中，解析出字符串（用户态地址），并将其拷贝到内核的buf中，最多拷贝max字节。
 int argstr(int n, char *buf, int max) {
     uint64 addr;
     if(argaddr(n, &addr) < 0) return -1;
@@ -65,20 +65,19 @@ int argstr(int n, char *buf, int max) {
     buf[max-1] = 0;
     return -1;
 }
-
+//用户态执行ecall指令陷入内核,调用该函数，完成系统调用的分发和执行。
 void syscall(void) {
     int num;
     struct proc *p = myproc();
-
+    // 检查进程和陷阱帧是否有效
     if (p == 0 || p->trapframe == 0) {
         // panic("syscall");
         while(1);
     }
-
+    // 从trapframe的a7寄存器中获取系统调用号
     num = p->trapframe->a7;
 
     if(num > 0 && num < sizeof(syscalls)/sizeof(syscalls[0]) && syscalls[num]) {
-        // [关键] 移除这里的 printf
         p->trapframe->a0 = syscalls[num]();
     } else {
         printf("pid %d %s: unknown sys call %d\n", p->pid, p->name, num);
