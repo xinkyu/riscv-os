@@ -1,17 +1,17 @@
-// kernel/proc.h (修正版)
+// kernel/proc.h 
 #ifndef __PROC_H__
 #define __PROC_H__
 
 #include "spinlock.h" // For struct spinlock
 #include "riscv.h"    // For pagetable_t, uint64
 
-// 修复: "未定义标识符 NPROC"
+
 #define NPROC 64 // 最大进程数
 
-// 修复: "未定义标识符 UNUSED", "RUNNABLE", "SLEEPING", "ZOMBIE"
+//进程状态枚举
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
-// 上下文切换
+// 上下文切换, 保存寄存器状态
 struct context {
     uint64 ra;
     uint64 sp;
@@ -30,7 +30,7 @@ struct context {
     uint64 s11;
 };
 
-// 修复: "不允许使用指向不完整类型 'struct cpu' 的指针或引用"
+
 struct cpu {
     struct proc *proc;      // 当前运行的进程
     struct context context; // 调度器上下文
@@ -40,9 +40,9 @@ struct cpu {
 
 extern struct cpu cpus[1]; // 声明
 
-// 修复: "不允许使用指向不完整类型 'struct proc' 的指针或引用"
+//进程控制块 PCB
 struct proc {
-    struct spinlock lock;
+    struct spinlock lock;   // 保护进程结构的自旋锁
     enum procstate state;   // 进程状态
     int pid;                // 进程ID
     struct proc *parent;    // 父进程

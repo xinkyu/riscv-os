@@ -1,4 +1,4 @@
-// kernel/proc.c (修正版 v3 - 修复死锁)
+// kernel/proc.c 
 #include "defs.h" 
 
 // 数组的全局定义
@@ -24,7 +24,7 @@ static void freeproc(struct proc *p) {
     p->state = UNUSED;
 }
 
-// 新进程的入口包装
+// 新进程的入口包装,让所有进程都统一从这里启动
 void proc_entry(void) {
     struct proc *p = myproc();
     release(&p->lock);
@@ -57,13 +57,13 @@ static struct proc* allocproc(void) {
         if (p->state == UNUSED) {
             p->pid = nextpid++;
             p->state = USED;
-            
+             // 分配内核栈：每个进程有独立的内核栈（一页大小）
             if ((p->kstack = (uint64)kalloc()) == 0) {
                 freeproc(p); // 使用 freeproc 清理
                 release(&p->lock);
                 return 0;
             }
-
+            // 设置上下文以从 proc_entry 开始执行
             p->context.sp = p->kstack + PGSIZE;
             p->context.ra = (uint64)proc_entry;
 
@@ -95,7 +95,7 @@ int create_process(void (*entry)(void)) {
     p->parent = myproc();
     
     acquire(&p->lock);
-    p->state = RUNNABLE;
+    p->state = RUNNABLE;// 标记为就绪，等待调度器调度
     release(&p->lock);
     
     return p->pid;
@@ -116,7 +116,7 @@ void scheduler(void) {
             if (p->state == RUNNABLE) {
                 p->state = RUNNING;
                 c->proc = p;
-                
+                // 上下文切换：保存调度器的上下文到c->context，恢复进程p的上下文
                 swtch(&c->context, &p->context);
                 
                 c->proc = 0;
@@ -139,6 +139,7 @@ void sched(void) {
     }
 
     intena = mycpu()->intena;
+    // 上下文切换：保存进程p的上下文，恢复调度器的上下文
     swtch(&p->context, &mycpu()->context);
     mycpu()->intena = intena;
 }
@@ -176,7 +177,7 @@ int wait(int *status) {
     struct proc *p = myproc();
     int havekids, pid;
     
-    acquire(&p->lock); // 1. 持有 p->lock
+    acquire(&p->lock); // 持有 p->lock
 
     while(1) {
         havekids = 0;
@@ -200,18 +201,18 @@ int wait(int *status) {
             return -1;
         }
 
-        // 2. 调用 sleep，此时 p->lock 仍然被持有
+        //  有子女但未退出，睡眠等待
         sleep(p, &p->lock);
         // 3. sleep 返回时，p->lock 仍然被持有
     }
 }
 
-// 指南书测试使用的别名
+
 void wait_process(int *status) {
     wait(status);
 }
 
-// --- 修正后的 SLEEP 函数 ---
+
 void sleep(void *chan, struct spinlock *lk) {
     struct proc *p = myproc();
     
@@ -224,8 +225,8 @@ void sleep(void *chan, struct spinlock *lk) {
         // Case 1: 不同的锁 (例如 producer/consumer)
         // 当前持有 lk (例如 buffer_lock).
         // 我们需要 p->lock 来安全地修改进程状态。
-        acquire(&p->lock);  // 获取进程自己的锁
-        release(lk);        // 释放 lk (buffer_lock)
+        acquire(&p->lock);  // 持有进程锁，保护状态修改
+        release(lk);        // 释放外部锁（如缓冲区锁），避免死锁
     }
     
     // Case 2: 相同的锁 (例如 wait)

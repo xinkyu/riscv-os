@@ -1,8 +1,8 @@
-// kernel/spinlock.h 
+// kernel/spinlock.h (修正版 v3)
 #ifndef __SPINLOCK_H__
 #define __SPINLOCK_H__
 
-#include "riscv.h" 
+#include "riscv.h" // 包含它以获取 uint64 的定义
 
 // 自旋锁
 struct spinlock {

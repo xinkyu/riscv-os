@@ -16,7 +16,7 @@ void acquire(struct spinlock *lk) {
         while(1);
     }
 
-    // 使用 RISC-V 的 'amst' (atomic swap) 指令原子地将lk->locked设为1，返回原来的值
+    // 使用 RISC-V 的 'amst' (atomic swap) 指令
     while (__atomic_test_and_set(&lk->locked, __ATOMIC_ACQUIRE));
 
     // 记录持有锁的CPU，用于调试
@@ -42,7 +42,6 @@ void push_off(void) {
     int old = intr_get();
     intr_off();
     if (mycpu()->ncli == 0) {
-        // 第一次屏蔽中断：保存原始的中断使能状态
         mycpu()->intena = old;
     }
     mycpu()->ncli += 1;
@@ -58,7 +57,6 @@ void pop_off(void) {
         printf("pop_off: ncli < 0\n");
         while(1);
     }
-    // 嵌套层数为0，且原始中断状态是开启的：恢复中断
     if (mycpu()->ncli == 0 && mycpu()->intena) {
         intr_on();
     }
