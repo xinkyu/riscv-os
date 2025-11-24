@@ -1,16 +1,14 @@
 #ifndef __STAT_H__
 #define __STAT_H__
 
-#define T_DIR     1   // Directory
-#define T_FILE    2   // File
-#define T_DEVICE  3   // Device
+#include "riscv.h"
 
 struct stat {
-  int dev;     // File system's disk device
-  uint inum;   // Inode number
-  short type;  // Type of file
-  short nlink; // Number of links to file
-  uint64 size; // Size of file in bytes
+    short type;
+    int dev;
+    uint ino;
+    short nlink;
+    uint64 size;
 };
 
-#endif
+#endif // __STAT_H__

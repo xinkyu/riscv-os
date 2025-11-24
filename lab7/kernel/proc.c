@@ -32,6 +32,16 @@ static void freeproc(struct proc *p) {
     p->chan = 0;
     p->killed = 0;
     p->xstate = 0;
+    for (int i = 0; i < NOFILE; i++) {
+        if (p->ofile[i]) {
+            fileclose(p->ofile[i]);
+            p->ofile[i] = 0;
+        }
+    }
+    if (p->cwd) {
+        iput(p->cwd);
+        p->cwd = 0;
+    }
     p->state = UNUSED;
 }
 
@@ -77,6 +87,10 @@ found:
 
     p->context.sp = p->kstack + PGSIZE;
     p->context.ra = (uint64)proc_entry;
+    for (int i = 0; i < NOFILE; i++) {
+        p->ofile[i] = 0;
+    }
+    p->cwd = 0;
 
     release(&p->lock);
     return p;
@@ -95,25 +109,13 @@ int create_process(void (*entry)(void)) {
     if (p == 0) return -1;
     p->entry = entry;
     p->parent = 0; 
+    if (p->cwd == 0) {
+        p->cwd = iget(ROOTDEV, ROOTINO);
+    }
     acquire(&p->lock);
     p->state = RUNNABLE;
     release(&p->lock);
     return p->pid;
-}
-
-// 修复后的 memmove: 使用 char* 指针 d 和 s
-void *memmove(void *dst, const void *src, uint64 n) {
-    const char *s = src;
-    char *d = dst;
-    if (s < d && s + n > d) {
-        s += n;
-        d += n;
-        while (n-- > 0) *--d = *--s;
-    } else {
-        // [错误修复] 这里之前用了 void* 类型的 dst/src，现在改用 char* 类型的 d/s
-        while (n-- > 0) *d++ = *s++;
-    }
-    return dst;
 }
 
 int fork(void) {
@@ -142,6 +144,14 @@ int fork(void) {
     np->context.ra = (uint64)fork_ret;
 
     for(i = 0; i < 16; i++) np->name[i] = p->name[i];
+    for (i = 0; i < NOFILE; i++) {
+        if (p->ofile[i]) {
+            np->ofile[i] = filedup(p->ofile[i]);
+        }
+    }
+    if (p->cwd) {
+        np->cwd = idup(p->cwd);
+    }
     np->parent = p;
 
     acquire(&np->lock);
@@ -190,6 +200,16 @@ void yield(void) {
 
 void exit(int status) {
     struct proc *p = myproc();
+    for (int fd = 0; fd < NOFILE; fd++) {
+        if (p->ofile[fd]) {
+            fileclose(p->ofile[fd]);
+            p->ofile[fd] = 0;
+        }
+    }
+    if (p->cwd) {
+        iput(p->cwd);
+        p->cwd = 0;
+    }
     acquire(&p->lock);
     p->state = ZOMBIE;
     p->xstate = status;

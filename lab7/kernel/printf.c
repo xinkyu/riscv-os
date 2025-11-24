@@ -116,3 +116,8 @@ void clear_screen() {
         cons_putc(*seq++);
     }
 }
+
+void panic(const char *msg) {
+    printf("\npanic: %s\n", msg);
+    while (1) { }
+}

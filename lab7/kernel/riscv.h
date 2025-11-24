@@ -4,7 +4,14 @@
 #define __RISCV_H__
 
 // 定义常用的类型
-typedef unsigned long uint64;
+typedef unsigned int  uint;
+typedef unsigned short ushort;
+typedef unsigned char  uchar;
+typedef unsigned int  uint32;
+typedef unsigned short uint16;
+typedef unsigned char  uint8;
+typedef unsigned long  uint64;
+typedef unsigned long  ulong;
 typedef uint64 pte_t;      // 页表项
 typedef uint64 *pagetable_t; // 页表
 

@@ -2,7 +2,11 @@
 #include "riscv.h"
 #include "defs.h"
 #include "syscall.h"
-#include "proc.h" 
+#include "proc.h"
+#include "fs.h"
+#include "file.h"
+#include "fcntl.h"
+#include "stat.h"
 
 #define NULL ((void*)0)
 
@@ -49,6 +53,46 @@ int stub_fork(void)   { return do_syscall(SYS_fork, 0, 0, 0); }
 int stub_wait(int *s) { return do_syscall(SYS_wait, (uint64)s, 0, 0); }
 void stub_exit(int s) { do_syscall(SYS_exit, s, 0, 0); }
 int stub_write(int fd, char *p, int n) { return do_syscall(SYS_write, fd, (uint64)p, n); }
+int stub_read(int fd, void *p, int n) { return do_syscall(SYS_read, fd, (uint64)p, n); }
+int stub_open(const char *path, int mode) { return do_syscall(SYS_open, (uint64)path, mode, 0); }
+int stub_close(int fd) { return do_syscall(SYS_close, fd, 0, 0); }
+int stub_unlink(const char *path) { return do_syscall(SYS_unlink, (uint64)path, 0, 0); }
+int stub_mkdir(const char *path) { return do_syscall(SYS_mkdir, (uint64)path, 0, 0); }
+int stub_chdir(const char *path) { return do_syscall(SYS_chdir, (uint64)path, 0, 0); }
+int stub_dup(int fd) { return do_syscall(SYS_dup, fd, 0, 0); }
+int stub_link(const char *old, const char *newp) { return do_syscall(SYS_link, (uint64)old, (uint64)newp, 0); }
+int stub_mknod(const char *path, int major, int minor) { return do_syscall(SYS_mknod, (uint64)path, major, minor); }
+int stub_fstat(int fd, struct stat *st) { return do_syscall(SYS_fstat, fd, (uint64)st, 0); }
+
+static void build_name(char *buf, const char *prefix, int idx) {
+    int i = 0;
+    while (prefix[i]) {
+        buf[i] = prefix[i];
+        i++;
+    }
+    char digits[16];
+    int n = 0;
+    if (idx == 0) {
+        digits[n++] = '0';
+    } else {
+        while (idx > 0 && n < (int)sizeof(digits)) {
+            digits[n++] = '0' + (idx % 10);
+            idx /= 10;
+        }
+    }
+    while (n > 0) {
+        buf[i++] = digits[--n];
+    }
+    buf[i] = '\0';
+}
+
+static void test_filesystem_integrity(void);
+static void test_concurrent_access(void);
+static void test_crash_recovery(void);
+static void test_filesystem_performance(void);
+static void debug_filesystem_state(void);
+static void debug_inode_usage(void);
+static void debug_disk_io(void);
 
 void test_basic_syscalls(void) {
     printf("\n=== Test 10: Basic System Calls ===\n");
@@ -128,6 +172,150 @@ void run_lab6_tests(void) {
     test_security();
     test_syscall_performance();
     printf("\n===== All Lab6 Tests Passed! =====\n");
+}
+
+void run_lab7_tests(void) {
+    printf("\n===== Starting Lab7 Filesystem Tests =====\n");
+    test_filesystem_integrity();
+    test_concurrent_access();
+    test_crash_recovery();
+    test_filesystem_performance();
+    debug_filesystem_state();
+    debug_inode_usage();
+    debug_disk_io();
+    printf("===== Lab7 Filesystem Tests Completed =====\n");
+}
+
+static void test_filesystem_integrity(void) {
+    printf("\n=== FS Test 1: Integrity ===\n");
+    char buffer[] = "Hello, filesystem!";
+    char read_buffer[64];
+
+    int fd = stub_open("testfile", O_CREATE | O_RDWR);
+    assert(fd >= 0);
+    int written = stub_write(fd, buffer, strlen(buffer));
+    assert(written == strlen(buffer));
+    stub_close(fd);
+
+    fd = stub_open("testfile", O_RDONLY);
+    assert(fd >= 0);
+    int bytes = stub_read(fd, read_buffer, sizeof(read_buffer) - 1);
+    assert(bytes == strlen(buffer));
+    read_buffer[bytes] = '\0';
+    assert(strncmp(buffer, read_buffer, bytes) == 0);
+    stub_close(fd);
+    assert(stub_unlink("testfile") == 0);
+    printf("Filesystem integrity test passed\n");
+}
+
+static void test_concurrent_access(void) {
+    printf("\n=== FS Test 2: Concurrent Access ===\n");
+    const int workers = 4;
+    const int iterations = 100;
+    for (int i = 0; i < workers; i++) {
+        int pid = stub_fork();
+        if (pid == 0) {
+            char filename[32];
+            build_name(filename, "test_", i);
+            for (int j = 0; j < iterations; j++) {
+                int fd = stub_open(filename, O_CREATE | O_RDWR);
+                if (fd >= 0) {
+                    stub_write(fd, (char*)&j, sizeof(j));
+                    stub_close(fd);
+                    stub_unlink(filename);
+                }
+            }
+            stub_exit(0);
+        }
+    }
+    for (int i = 0; i < workers; i++) {
+        int status = 0;
+        stub_wait(&status);
+    }
+    printf("Concurrent access test completed\n");
+}
+
+static void test_crash_recovery(void) {
+    printf("\n=== FS Test 3: Crash Recovery (Simulated) ===\n");
+    char data[BSIZE];
+    for (int i = 0; i < BSIZE; i++) {
+        data[i] = (char)(i & 0xff);
+    }
+
+    int fd = stub_open("crashfile", O_CREATE | O_RDWR);
+    assert(fd >= 0);
+    assert(stub_write(fd, data, sizeof(data)) == sizeof(data));
+    stub_close(fd);
+
+    // 模拟重启：重新初始化日志并恢复
+    initlog(ROOTDEV, &sb);
+
+    fd = stub_open("crashfile", O_RDONLY);
+    assert(fd >= 0);
+    char verify[BSIZE];
+    int bytes = stub_read(fd, verify, sizeof(verify));
+    assert(bytes == sizeof(verify));
+    assert(memcmp(data, verify, sizeof(data)) == 0);
+    stub_close(fd);
+    stub_unlink("crashfile");
+    printf("Crash recovery simulation passed\n");
+}
+
+static void test_filesystem_performance(void) {
+    printf("\n=== FS Test 4: Performance ===\n");
+    uint64 start = get_time();
+    const int small_files = 200;
+    char filename[32];
+    for (int i = 0; i < small_files; i++) {
+        build_name(filename, "small_", i);
+        int fd = stub_open(filename, O_CREATE | O_RDWR);
+        if (fd >= 0) {
+            stub_write(fd, "test", 4);
+            stub_close(fd);
+        }
+    }
+    uint64 small_time = get_time() - start;
+
+    start = get_time();
+    int fd = stub_open("large_file", O_CREATE | O_RDWR | O_TRUNC);
+    assert(fd >= 0);
+    char buffer[4096];
+    for (int i = 0; i < (1024); i++) {
+        stub_write(fd, buffer, sizeof(buffer));
+    }
+    stub_close(fd);
+    uint64 large_time = get_time() - start;
+
+    printf("Small files (%d x 4B): %lu cycles\n", small_files, small_time);
+    printf("Large file (4MB): %lu cycles\n", large_time);
+
+    for (int i = 0; i < small_files; i++) {
+        build_name(filename, "small_", i);
+        stub_unlink(filename);
+    }
+    stub_unlink("large_file");
+}
+
+static void debug_filesystem_state(void) {
+    struct superblock info;
+    get_superblock(&info);
+    printf("\n=== Filesystem Debug Info ===\n");
+    printf("Total blocks: %d\n", info.size);
+    printf("Data blocks: %d\n", info.nblocks);
+    printf("Free blocks: %d\n", count_free_blocks());
+    printf("Free inodes: %d\n", count_free_inodes());
+    printf("Buffer cache hits: %lu\n", get_buffer_cache_hits());
+    printf("Buffer cache misses: %lu\n", get_buffer_cache_misses());
+}
+
+static void debug_inode_usage(void) {
+    dump_inode_usage();
+}
+
+static void debug_disk_io(void) {
+    printf("=== Disk I/O Statistics ===\n");
+    printf("Disk reads: %lu\n", get_disk_read_count());
+    printf("Disk writes: %lu\n", get_disk_write_count());
 }
 
 // 存根

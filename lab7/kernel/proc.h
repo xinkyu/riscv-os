@@ -4,8 +4,9 @@
 
 #include "spinlock.h"
 #include "riscv.h"
-
-#define NPROC 64
+#include "param.h"
+#include "file.h"
+#include "fs.h"
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
@@ -91,7 +92,8 @@ struct proc {
     
     void (*entry)(void);
     char name[16];
-    void *ofile[16];             // 打开文件表 (Lab 7预留)
+    struct file *ofile[NOFILE];
+    struct inode *cwd;
 };
 
 extern struct proc proc[NPROC];

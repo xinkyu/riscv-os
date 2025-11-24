@@ -1,56 +1,69 @@
 #ifndef __FS_H__
 #define __FS_H__
-#include "types.h" // 确保包含 types.h
 
-// Disk layout:
-// [ boot block | super block | log | inode blocks | free bit map | data blocks ]
+#include "param.h"
+#include "sleeplock.h"
+#include "spinlock.h"
+#include "riscv.h"
 
-#define ROOTINO 1  // root i-number
-#define BSIZE 1024  // block size
+#define ROOTINO 1
+#define FSMAGIC 0x10203040
 
-// Disk layout parameters
-struct superblock {
-  uint magic;      // Must be FSMAGIC
-  uint size;       // Size of file system image (blocks)
-  uint nblocks;    // Number of data blocks
-  uint ninodes;    // Number of inodes.
-  uint nlog;       // Number of log blocks
-  uint logstart;   // Block number of first log block
-  uint inodestart; // Block number of first inode block
-  uint bmapstart;  // Block number of first free map block
+// 目录项
+#define DIRSIZ  14
+struct dirent {
+    ushort inum;
+    char name[DIRSIZ];
 };
 
-#define FSMAGIC 0x10203040
+// inode 类型
+#define T_DIR   1
+#define T_FILE  2
+#define T_DEV   3
 
 #define NDIRECT 12
 #define NINDIRECT (BSIZE / sizeof(uint))
 #define MAXFILE (NDIRECT + NINDIRECT)
+#define IPB   (BSIZE / sizeof(struct dinode))
+#define BPB   (BSIZE * 8)
+#define IBLOCK(i, sb)     ((i) / IPB + (sb).inodestart)
+#define BBLOCK(b, sb)     ((b) / BPB + (sb).bmapstart)
 
-// On-disk inode structure
+struct superblock {
+    uint magic;
+    uint size;
+    uint nblocks;
+    uint ninodes;
+    uint nlog;
+    uint logstart;
+    uint inodestart;
+    uint bmapstart;
+};
+
 struct dinode {
-  short type;           // File type
-  short major;          // Major device number (T_DEVICE only)
-  short minor;          // Minor device number (T_DEVICE only)
-  short nlink;          // Number of links to inode in file system
-  uint size;            // Size of file (bytes)
-  uint addrs[NDIRECT+1];   // Data block addresses
+    short type;
+    short major;
+    short minor;
+    short nlink;
+    uint size;
+    uint addrs[NDIRECT+1];
 };
 
-// Inodes per block.
-#define IPB           (BSIZE / sizeof(struct dinode))
+struct inode {
+    uint dev;
+    uint inum;
+    int ref;
+    struct sleeplock lock;
+    int valid;
 
-// Block containing inode i
-#define IBLOCK(i, sb)     ((i) / IPB + sb.inodestart)
-
-// Bitmap bits per block
-#define BPB           (BSIZE*8)
-
-// Directory is a file containing a sequence of dirent structures.
-#define DIRSIZ 14
-
-struct dirent {
-  ushort inum;
-  char name[DIRSIZ];
+    short type;
+    short major;
+    short minor;
+    short nlink;
+    uint size;
+    uint addrs[NDIRECT+1];
 };
 
-#endif
+extern struct superblock sb;
+
+#endif // __FS_H__

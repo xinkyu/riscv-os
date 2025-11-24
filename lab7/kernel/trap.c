@@ -1,10 +1,8 @@
-#include "types.h"
-#include "param.h"
-#include "memlayout.h" // 必须包含：用于获取 UART0_IRQ 和 VIRTIO0_IRQ
-#include "riscv.h"
-#include "spinlock.h"
-#include "proc.h"
+// kernel/trap.c
 #include "defs.h"
+#include "riscv.h"
+#include "syscall.h"
+#include "proc.h" 
 
 extern void kernelvec();
 extern struct proc proc[NPROC]; 
@@ -51,47 +49,13 @@ struct stack_regs {
     uint64 t3; uint64 t4; uint64 t5; uint64 t6;
 };
 
-// [新增] 设备中断处理函数
-// 返回 1 表示已处理设备中断，0 表示非设备中断
-int devintr() {
-    uint64 scause = r_scause();
-
-    // 检查是否为 Supervisor External Interrupt (Cause 9)
-    if((scause & 0x8000000000000000L) && (scause & 0xff) == 9){
-        // 向 PLIC 询问是哪个设备产生的中断
-        int irq = plic_claim();
-
-        if(irq == UART0_IRQ){
-            uartintr(); // 处理串口中断
-        } else if(irq == VIRTIO0_IRQ){
-            virtio_disk_intr(); // 处理磁盘中断 [关键!]
-        } else if(irq){
-            printf("unexpected interrupt irq=%d\n", irq);
-        }
-
-        // 告知 PLIC 中断已处理完毕
-        if(irq) plic_complete(irq);
-        return 1;
-    }
-    
-    // 检查是否为 Supervisor Timer Interrupt (Cause 5)
-    if((scause & 0x8000000000000000L) && (scause & 0xff) == 5){
-        return 2;
-    }
-
-    return 0;
-}
-
 void kerneltrap(uint64 sp_val) {
     uint64 scause = r_scause();
     uint64 sepc = r_sepc();
-    uint64 sstatus = r_sstatus(); 
+    uint64 sstatus = r_sstatus(); // [修复1] 保存入口时的 sstatus
 
-    // 判断是否为中断 (最高位为1)
     if (scause & (1L << 63)) {
         uint64 cause = scause & 0x7FFFFFFFFFFFFFFF;
-        
-        // 5 = Supervisor Timer Interrupt (时钟中断)
         if (cause == 5) {
             total_interrupt_count++;
             tick_counter++;
@@ -99,16 +63,8 @@ void kerneltrap(uint64 sp_val) {
             uint64 next_timer = r_time() + 100000;
             sbi_set_timer(next_timer);
         }
-        // [新增] 9 = Supervisor External Interrupt (外部设备中断)
-        else if (cause == 9) {
-            devintr(); 
-        }
-        else {
-            // 未知中断
-            printf("kerneltrap: unknown interrupt cause %d\n", cause);
-        }
     } 
-    else if (scause == 3) { // ebreak for syscall
+    else if (scause == 3) {
         struct proc *p = myproc();
         if (p == 0) {
             printf("kerneltrap: FATAL - no process\n");
@@ -118,7 +74,7 @@ void kerneltrap(uint64 sp_val) {
         struct stack_regs *regs = (struct stack_regs *)sp_val;
 
         if (p->trapframe) {
-            // 保存通用寄存器
+            // 复制寄存器到 trapframe ... (省略未变动代码)
             p->trapframe->ra = regs->ra;
             p->trapframe->sp = regs->sp + 256; 
             p->trapframe->gp = regs->gp;
@@ -152,15 +108,20 @@ void kerneltrap(uint64 sp_val) {
             p->trapframe->t6 = regs->t6;
             p->trapframe->epc = sepc;
         }
-        
-        if(p->trapframe) p->trapframe->epc += 4; // 跳过 ebreak
 
-        intr_on(); // 开启中断，允许在系统调用期间响应磁盘中断
-        syscall();
-        intr_off(); // 关闭中断
+        // [修复2] 不要在这里写寄存器，因为 intr_on 后的中断会覆盖它们
+        // w_sepc(sepc + 4); 
         
+        if(p->trapframe) p->trapframe->epc += 4;
+
+        intr_on(); // 开启中断，危险区开始
+        syscall();
+        intr_off(); // 关闭中断，危险区结束
+        
+        // [修复3] 恢复被嵌套中断破坏的 CSR 寄存器
+        // 必须恢复 sstatus，否则 sret 可能会错误地返回到 User 模式导致 Page Fault
         w_sstatus(sstatus); 
-        w_sepc(sepc + 4);   
+        w_sepc(sepc + 4);   // 恢复正确的返回地址 (跳过 ebreak 指令)
 
         regs->a0 = p->trapframe->a0;
     } 

@@ -3,13 +3,18 @@
 
 #include "spinlock.h"
 
+struct proc;
+
 struct sleeplock {
-  uint locked;       // Is the lock held?
-  struct spinlock lk; // spinlock protecting this sleep lock
-  
-  // For debugging:
-  char *name;        // Name of lock.
-  int pid;           // Process holding lock
+    uint locked;       // 是否持有
+    struct spinlock lk;// 自旋锁保护 sleeplock
+    char *name;
+    struct proc *owner;
 };
 
-#endif
+void initsleeplock(struct sleeplock *lk, char *name);
+void acquiresleep(struct sleeplock *lk);
+void releasesleep(struct sleeplock *lk);
+int holdingsleep(struct sleeplock *lk);
+
+#endif // __SLEEPLOCK_H__

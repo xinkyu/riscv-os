@@ -2,6 +2,7 @@
 
 #include "riscv.h"
 #include "defs.h"
+#include "virtio.h"
 
 // 内核的根页表
 pagetable_t kernel_pagetable;
@@ -105,6 +106,9 @@ void kvminit(void) {
 
     // 映射 UART 设备
     mappages(kernel_pagetable, 0x10000000, PGSIZE, 0x10000000, PTE_R | PTE_W);
+
+    // 映射 VirtIO 磁盘 MMIO
+    mappages(kernel_pagetable, VIRTIO0, PGSIZE, VIRTIO0, PTE_R | PTE_W);
 
     // 映射内核代码段 (R-X)
     mappages(kernel_pagetable, 0x80200000, (uint64)etext - 0x80200000, 0x80200000, PTE_R | PTE_X);
