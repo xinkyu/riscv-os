@@ -38,8 +38,6 @@ static int do_syscall(int num, uint64 a0, uint64 a1, uint64 a2) {
     register long t_a1 asm("a1") = a1;
     register long t_a2 asm("a2") = a2;
 
-    // [关键修复] 强制使用 .4byte 插入 32位 ebreak 指令 (0x00100073)
-    // 这样 trap.c 中的 sepc+4 就永远是正确的，不会跳到指令中间导致崩溃
     asm volatile(".4byte 0x00100073" 
                  : "+r"(t_a0) 
                  : "r"(t_a1), "r"(t_a2), "r"(t_a7) 
@@ -131,21 +129,18 @@ void test_parameter_passing(void) {
     printf("Parameter passing test passed\n");
 }
 
-
-// Test 12: 安全性测试
 void test_security(void) {
     printf("\n=== Test 12: Security Test ===\n");
     char *invalid_ptr = (char*)0x0; 
     printf("  Writing to invalid pointer %p...\n", invalid_ptr);
     
-    // [修改] 取消注释，并验证结果
     int result = stub_write(1, invalid_ptr, 10);
     printf("  Result: %d (Expected: -1)\n", result);
     
     assert(result == -1);
     printf("Security test passed: Invalid pointer correctly rejected\n");
 }
-// Test 13: 性能测试
+
 void test_syscall_performance(void) {
     printf("\n=== Test 13: Syscall Performance ===\n");
     
@@ -154,7 +149,7 @@ void test_syscall_performance(void) {
 
     printf("  Running %d getpid() calls...\n", count);
     for (int i = 0; i < count; i++) {
-        stub_getpid(); // 这里面现在没有 printf 了，非常快
+        stub_getpid(); 
     }
 
     uint64 end_time = get_time();
@@ -167,6 +162,14 @@ void test_syscall_performance(void) {
 
 void run_lab6_tests(void) {
     printf("\n===== Starting Lab6 Tests =====\n");
+    
+    // 尝试打开一个文件作为 stdout，如果尚未打开
+    int fd = stub_open("console", O_CREATE | O_RDWR); 
+    if (fd == 0) {
+        stub_dup(fd); // fd 1
+        stub_dup(fd); // fd 2
+    }
+
     test_basic_syscalls();
     test_parameter_passing();
     test_security();
@@ -186,25 +189,65 @@ void run_lab7_tests(void) {
     printf("===== Lab7 Filesystem Tests Completed =====\n");
 }
 
+// === 增强调试信息的完整性测试 ===
 static void test_filesystem_integrity(void) {
     printf("\n=== FS Test 1: Integrity ===\n");
     char buffer[] = "Hello, filesystem!";
     char read_buffer[64];
 
+    printf("  1. Opening file for write...\n");
     int fd = stub_open("testfile", O_CREATE | O_RDWR);
-    assert(fd >= 0);
+    if (fd < 0) {
+        printf("  FAIL: Open failed, fd=%d\n", fd);
+        assert(0);
+    }
+    printf("  Open success, fd=%d\n", fd);
+
+    printf("  2. Writing data...\n");
     int written = stub_write(fd, buffer, strlen(buffer));
-    assert(written == strlen(buffer));
+    if (written != strlen(buffer)) {
+        printf("  FAIL: Write failed, written=%d, expected=%d\n", written, strlen(buffer));
+        assert(0);
+    }
+    printf("  Write success\n");
+    
     stub_close(fd);
 
+    printf("  3. Re-opening for read...\n");
     fd = stub_open("testfile", O_RDONLY);
-    assert(fd >= 0);
+    if (fd < 0) {
+        printf("  FAIL: Re-open failed, fd=%d\n", fd);
+        assert(0);
+    }
+    printf("  Re-open success, fd=%d\n", fd);
+
+    printf("  4. Reading data...\n");
+    // 清空缓冲区，防止读取到垃圾数据
+    for(int k=0; k<64; k++) read_buffer[k] = 0;
+    
     int bytes = stub_read(fd, read_buffer, sizeof(read_buffer) - 1);
-    assert(bytes == strlen(buffer));
+    if (bytes != strlen(buffer)) {
+        printf("  FAIL: Read count mismatch, bytes=%d, expected=%d\n", bytes, strlen(buffer));
+        assert(0);
+    }
     read_buffer[bytes] = '\0';
-    assert(strncmp(buffer, read_buffer, bytes) == 0);
+    printf("  Read bytes: %d, Content: '%s'\n", bytes, read_buffer);
+
+    if (strncmp(buffer, read_buffer, bytes) != 0) {
+        printf("  FAIL: Content mismatch!\n");
+        printf("  Expected: '%s'\n", buffer);
+        printf("  Actual:   '%s'\n", read_buffer);
+        assert(0);
+    }
+    
     stub_close(fd);
-    assert(stub_unlink("testfile") == 0);
+    
+    printf("  5. Unlinking...\n");
+    if (stub_unlink("testfile") != 0) {
+        printf("  FAIL: Unlink failed\n");
+        assert(0);
+    }
+    
     printf("Filesystem integrity test passed\n");
 }
 

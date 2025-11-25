@@ -4,6 +4,9 @@
 #include "fs.h"
 #include "virtio.h"
 
+// ... (结构体定义和 helper 函数保持不变) ...
+// ... (请保留之前的 disk 结构体, NUM, virtio_blk_req 等定义) ...
+
 #define NUM 8
 
 struct virtio_blk_req {
@@ -76,6 +79,7 @@ static void free_chain(int i) {
 }
 
 void virtio_disk_init(void) {
+    // ... (保持你现在的 Modern 模式初始化代码不变) ...
     spinlock_init(&disk.lock, "virtio_disk");
 
     uint32 magic = r32(VIRTIO_MMIO_MAGIC_VALUE);
@@ -83,33 +87,37 @@ void virtio_disk_init(void) {
     uint32 device_id = r32(VIRTIO_MMIO_DEVICE_ID);
     uint32 vendor_id = r32(VIRTIO_MMIO_VENDOR_ID);
 
-    if (magic != 0x74726976 ||
-        version != 2 ||
-        device_id != 2 ||
-        vendor_id != 0x554d4551) {
-        printf("virtio: magic=0x%x version=0x%x device=0x%x vendor=0x%x\n", magic, version, device_id, vendor_id);
+    printf("virtio: magic=0x%x version=0x%x device=0x%x vendor=0x%x\n", magic, version, device_id, vendor_id);
+
+    if (magic != 0x74726976 || version != 2 || device_id != 2 || vendor_id != 0x554d4551) {
         panic("virtio_disk_init: cannot find virtio disk");
     }
 
     w32(VIRTIO_MMIO_STATUS, 0);
-    w32(VIRTIO_MMIO_STATUS, 1);
-    w32(VIRTIO_MMIO_STATUS, 1 | 2);
-    w32(VIRTIO_MMIO_STATUS, 1 | 2 | 4);
+    w32(VIRTIO_MMIO_STATUS, r32(VIRTIO_MMIO_STATUS) | 1);
+    w32(VIRTIO_MMIO_STATUS, r32(VIRTIO_MMIO_STATUS) | 2);
 
     uint32 features = r32(VIRTIO_MMIO_DEVICE_FEATURES);
     features &= ~(1 << 28);
+    features &= ~(1 << 24);
     w32(VIRTIO_MMIO_DRIVER_FEATURES, features);
 
-    w32(VIRTIO_MMIO_STATUS, 1 | 2 | 4 | 8);
+    w32(VIRTIO_MMIO_STATUS, r32(VIRTIO_MMIO_STATUS) | 4);
+    if (!(r32(VIRTIO_MMIO_STATUS) & 4)) {
+        panic("virtio_disk_init: features not accepted");
+    }
+
+    w32(VIRTIO_MMIO_STATUS, r32(VIRTIO_MMIO_STATUS) | 8);
 
     w32(VIRTIO_MMIO_QUEUE_SEL, 0);
+    if (r32(VIRTIO_MMIO_QUEUE_READY)) {
+        panic("virtio_disk_init: queue should not be ready");
+    }
+
     uint32 max = r32(VIRTIO_MMIO_QUEUE_NUM_MAX);
-    if (max == 0) {
-        panic("virtio_disk_init: no queue 0");
-    }
-    if (max < NUM) {
-        panic("virtio_disk_init: queue too short");
-    }
+    if (max == 0) panic("virtio_disk_init: no queue 0");
+    if (max < NUM) panic("virtio_disk_init: queue too short");
+    
     w32(VIRTIO_MMIO_QUEUE_NUM, NUM);
 
     disk.desc = (struct virtq_desc*)kalloc();
@@ -143,18 +151,20 @@ void virtio_disk_rw(struct buf *b, int write) {
 
     for (int i = 0; i < 3; i++) {
         while ((idx[i] = alloc_desc()) < 0) {
-            // busy wait until desc free
+            // 对于 Lab，这里简单的忙等待是可以的
+            // release(&disk.lock); acquire(&disk.lock);
         }
     }
 
     struct virtio_blk_req *cmd = &disk.info[idx[0]].cmd;
     memset(cmd, 0, sizeof(*cmd));
     cmd->type = write ? 1 : 0;
+    cmd->reserved = 0;
     cmd->sector = (uint64)b->blockno * (BSIZE / 512);
 
     disk.desc[idx[0]].addr = (uint64)cmd;
     disk.desc[idx[0]].len = sizeof(*cmd);
-    disk.desc[idx[0]].flags = 1; // NEXT
+    disk.desc[idx[0]].flags = 1; 
     disk.desc[idx[0]].next = idx[1];
 
     disk.desc[idx[1]].addr = (uint64)b->data;
@@ -162,15 +172,20 @@ void virtio_disk_rw(struct buf *b, int write) {
     if (write)
         disk.desc[idx[1]].flags = 0;
     else
-        disk.desc[idx[1]].flags = 2; // WRITE
+        disk.desc[idx[1]].flags = 2;
     disk.desc[idx[1]].flags |= 1;
     disk.desc[idx[1]].next = idx[2];
 
     disk.info[idx[0]].status = 0xff;
     disk.desc[idx[2]].addr = (uint64)&disk.info[idx[0]].status;
     disk.desc[idx[2]].len = 1;
-    disk.desc[idx[2]].flags = 2; // WRITE
+    disk.desc[idx[2]].flags = 2;
     disk.desc[idx[2]].next = 0;
+
+    // 防御检查
+    if (disk.desc[idx[0]].len == 0 || disk.desc[idx[1]].len == 0 || disk.desc[idx[2]].len == 0) {
+        panic("virtio: zero length descriptor");
+    }
 
     b->disk = 1;
     disk.info[idx[0]].b = b;
@@ -178,7 +193,6 @@ void virtio_disk_rw(struct buf *b, int write) {
     disk.avail->ring[disk.avail->idx % NUM] = idx[0];
     __sync_synchronize();
     disk.avail->idx++;
-
     __sync_synchronize();
     w32(VIRTIO_MMIO_QUEUE_NOTIFY, 0);
 
@@ -187,17 +201,23 @@ void virtio_disk_rw(struct buf *b, int write) {
     else
         disk_reads++;
 
+    // === 关键修复：使用轮询代替 sleep，以支持启动阶段 ===
     while (disk.info[idx[0]].status == 0xff) {
-        while (disk.used_idx != disk.used->idx) {
-            int id = disk.used->ring[disk.used_idx % NUM].id;
-            disk.used_idx++;
-            disk.info[id].status = 0;
-            if (disk.info[id].b) {
-                disk.info[id].b->disk = 0;
-            }
+        // 释放锁，允许中断处理程序（如果有的话）运行
+        release(&disk.lock);
+        
+        // 在启动阶段，中断可能还没完全接管，或者我们没有进程上下文来 sleep
+        // 主动轮询设备状态是一个简单的解决方案
+        if (r32(VIRTIO_MMIO_INTERRUPT_STATUS) & 1) {
+            w32(VIRTIO_MMIO_INTERRUPT_ACK, r32(VIRTIO_MMIO_INTERRUPT_STATUS));
+            virtio_disk_intr();
         }
+        
+        // 重新获取锁，检查状态
+        acquire(&disk.lock);
     }
 
+    disk.info[idx[0]].b = 0;
     free_chain(idx[0]);
 
     release(&disk.lock);
@@ -205,12 +225,33 @@ void virtio_disk_rw(struct buf *b, int write) {
 
 void virtio_disk_intr(void) {
     acquire(&disk.lock);
+
+    __sync_synchronize();
+
     while (disk.used_idx != disk.used->idx) {
+        __sync_synchronize();
         int id = disk.used->ring[disk.used_idx % NUM].id;
         disk.used_idx++;
-        disk.info[id].status = 0;
+        __sync_synchronize();
+
+        if (id >= NUM) {
+            // printf("virtio_disk_intr: bad id %d\n", id);
+            continue; 
+        }
+
         struct buf *b = disk.info[id].b;
+        
+        // 依然保留这个检查，以防万一
+        if (b == 0) {
+            // printf("virtio_disk_intr: b is 0\n");
+            continue; 
+        }
+
         b->disk = 0;
+        
+        // wakeup(b) 是安全的，即使在启动阶段调用它，只要它检查了 chan 是否为空
+        // 但在我们的轮询模式下，wakeup 不是必须的，因为 rw 函数自己在轮询 status
+        // 不过为了兼容 sleep 模式，还是保留它
         wakeup(b);
     }
     release(&disk.lock);

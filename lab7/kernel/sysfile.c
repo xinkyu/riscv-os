@@ -5,13 +5,36 @@
 #include "file.h"
 #include "stat.h"
 #include "fcntl.h"
+#include "riscv.h" // for PTE_V
+
+extern pagetable_t kernel_pagetable;
+
+static int validate_addr(uint64 va, int len) {
+    if (len < 0) return 0;
+    uint64 start = va;
+    uint64 end = va + len;
+    if (end < start) return 0;
+
+    for (uint64 a = PGROUNDDOWN(start); a < end; a += PGSIZE) {
+        pte_t *pte = walk_lookup(kernel_pagetable, a);
+        if (pte == 0 || (*pte & PTE_V) == 0) {
+            return 0;
+        }
+    }
+    return 1;
+}
 
 static struct inode *create(char *path, short type, short major, short minor) {
     struct inode *ip, *dp;
     char name[DIRSIZ];
 
-    if ((dp = nameiparent(path, name)) == 0)
+    // DEBUG PRINT
+    // printf("create: path=%s type=%d\n", path, type);
+
+    if ((dp = nameiparent(path, name)) == 0) {
+        printf("create: nameiparent failed for %s\n", path); // DEBUG
         return 0;
+    }
 
     ilock(dp);
 
@@ -97,8 +120,28 @@ int sys_write(void) {
     struct file *f;
     uint64 p;
     int n;
+    int fd;
+
+    if (argint(0, &fd) < 0) return -1;
+
+    if ((fd == 1 || fd == 2) && myproc()->ofile[fd] == 0) {
+        if (argaddr(1, &p) < 0 || argint(2, &n) < 0) return -1;
+        if (!validate_addr(p, n)) return -1;
+
+        char *s = (char*)p;
+        for(int i = 0; i < n; i++) {
+            cons_putc(s[i]);
+        }
+        return n;
+    }
+
     if (argfd(0, 0, &f) < 0 || argaddr(1, &p) < 0 || argint(2, &n) < 0)
         return -1;
+    
+    if (!validate_addr(p, n)) {
+        return -1;
+    }
+
     return filewrite(f, p, n);
 }
 
@@ -230,6 +273,7 @@ int sys_open(void) {
     if (omode & O_CREATE) {
         ip = create(path, T_FILE, 0, 0);
         if (ip == 0) {
+            printf("sys_open: create failed for %s\n", path); // DEBUG
             end_op();
             return -1;
         }

@@ -24,16 +24,16 @@ OBJS = \
     kernel/proc.o         \
     kernel/swtch.o        \
     kernel/spinlock.o     \
-    kernel/sleeplock.o   \
-    kernel/string.o      \
+    kernel/sleeplock.o    \
+    kernel/string.o       \
     kernel/syscall.o      \
     kernel/sysproc.o      \
     kernel/sysfile.o      \
-    kernel/bio.o         \
-    kernel/log.o         \
-    kernel/fs.o          \
-    kernel/file.o        \
-    kernel/virtio_disk.o \
+    kernel/bio.o          \
+    kernel/log.o          \
+    kernel/fs.o           \
+    kernel/file.o         \
+    kernel/virtio_disk.o  \
     kernel/test.o
 
 all: kernel.elf
@@ -48,9 +48,11 @@ kernel/%.o: kernel/%.S
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 run: kernel.elf $(FSIMG)
-	qemu-system-riscv64 -machine virt -nographic -kernel kernel.elf \
+	qemu-system-riscv64 -machine virt \
+		-nographic -kernel kernel.elf \
 		-drive file=$(FSIMG),if=none,format=raw,id=fsimg \
-		-device virtio-blk-device,drive=fsimg,bus=virtio-mmio-bus.0
+		-device virtio-blk-device,drive=fsimg,bus=virtio-mmio-bus.0\
+        -global virtio-mmio.force-legacy=false
 
 $(FSIMG):
 	dd if=/dev/zero of=$(FSIMG) bs=$(BSIZE) count=$(FSSIZE)

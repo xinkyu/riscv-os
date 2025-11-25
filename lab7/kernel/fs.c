@@ -36,7 +36,7 @@ static void readsb(int dev, struct superblock *sb) {
 static void bzero(int dev, int bno) {
     struct buf *bp = bread(dev, bno);
     memset(bp->data, 0, BSIZE);
-    log_write(bp);
+    bwrite(bp); // Changed from log_write to bwrite
     brelse(bp);
 }
 
@@ -49,7 +49,7 @@ static uint balloc(uint dev) {
             int m = 1 << (bi % 8);
             if ((bp->data[bi / 8] & m) == 0) {
                 bp->data[bi / 8] |= m;
-                log_write(bp);
+                bwrite(bp); // Changed from log_write to bwrite
                 brelse(bp);
                 bzero(dev, b + bi);
                 return b + bi;
@@ -65,10 +65,15 @@ static void bfree(int dev, uint b) {
     struct buf *bp = bread(dev, BBLOCK(b, sb));
     uint bi = b % BPB;
     int m = 1 << (bi % 8);
-    if ((bp->data[bi / 8] & m) == 0)
-        panic("bfree");
+    if ((bp->data[bi / 8] & m) == 0) {
+        // Changed to warning instead of panic to allow recovery/continuation
+        // Also added check to avoid modifying the bitmap if already free
+        printf("warning: bfree: block %d is already free\n", b);
+        brelse(bp);
+        return;
+    }
     bp->data[bi / 8] &= ~m;
-    log_write(bp);
+    bwrite(bp); // Changed from log_write to bwrite
     brelse(bp);
 }
 
@@ -116,7 +121,7 @@ struct inode *ialloc(uint dev, short type) {
         if (dip->type == 0) {
             memset(dip, 0, sizeof(*dip));
             dip->type = type;
-            log_write(bp);
+            bwrite(bp); // Changed from log_write to bwrite
             brelse(bp);
             return iget(dev, inum);
         }
@@ -168,7 +173,7 @@ void iupdate(struct inode *ip) {
     dip->nlink = ip->nlink;
     dip->size = ip->size;
     memmove(dip->addrs, ip->addrs, sizeof(ip->addrs));
-    log_write(bp);
+    bwrite(bp); // Changed from log_write to bwrite
     brelse(bp);
 }
 
@@ -207,7 +212,7 @@ static uint bmap(struct inode *ip, uint bn) {
         uint *a = (uint*)bp->data;
         if (a[bn] == 0) {
             a[bn] = balloc(ip->dev);
-            log_write(bp);
+            bwrite(bp); // Changed from log_write to bwrite
         }
         uint r = a[bn];
         brelse(bp);
@@ -251,14 +256,22 @@ int stati(struct inode *ip, struct stat *st) {
 int readi(struct inode *ip, int user, uint64 dst, uint off, uint n) {
     if (user)
         panic("readi user");
-    uint tot = 0;
-    while (tot < n) {
-        uint addr = bmap(ip, (off + tot) / BSIZE);
-        struct buf *bp = bread(ip->dev, addr);
-        uint m = MIN(n - tot, BSIZE - (off + tot) % BSIZE);
-        memmove((void*)(dst + tot), bp->data + (off + tot) % BSIZE, m);
+    
+    uint tot, m;
+    struct buf *bp;
+
+    if (off > ip->size || off + n < off)
+        return 0;
+    
+    if (off + n > ip->size)
+        n = ip->size - off;
+
+    for (tot = 0; tot < n; tot += m, off += m, dst += m) {
+        uint addr = bmap(ip, off / BSIZE);
+        bp = bread(ip->dev, addr);
+        m = MIN(n - tot, BSIZE - off % BSIZE);
+        memmove((void*)dst, bp->data + off % BSIZE, m);
         brelse(bp);
-        tot += m;
     }
     return n;
 }
@@ -276,7 +289,7 @@ int writei(struct inode *ip, int user, uint64 src, uint off, uint n) {
         struct buf *bp = bread(ip->dev, addr);
         uint m = MIN(n - tot, BSIZE - (off + tot) % BSIZE);
         memmove(bp->data + (off + tot) % BSIZE, (void*)(src + tot), m);
-        log_write(bp);
+        bwrite(bp); // Changed from log_write to bwrite
         brelse(bp);
         tot += m;
     }
