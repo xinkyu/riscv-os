@@ -5,7 +5,7 @@
 #define NCPU         1
 #define NOFILE       16
 #define NFILE        100
-#define NINODE       50
+#define NINODE       300
 #define NDEV         10
 #define ROOTDEV      1
 #define MAXOPBLOCKS  10
