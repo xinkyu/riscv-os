@@ -44,6 +44,12 @@
     * **稳定性修复**: 解决了中断嵌套导致的上下文（`sepc`, `sstatus`）破坏问题，确保了系统调用返回的可靠性。
     * **功能增强**: `printf` 增加了对长整数 (`%l`) 和指针 (`%p`) 的支持，优化了调试输出。
 
+* **实验 7**: 日志文件系统 (Filesystem with WAL)
+    * **块与 inode 管理**: 基于位图的 `balloc/bfree`、`bmap`、`itrunc` 组合，支撑普通文件与目录的生命周期。
+    * **写前日志**: `begin_op/end_op`、`log_write`、`install_trans` 构成的 WAL 机制保证崩溃后一致性，修复了重复 pin 导致的缓冲区泄漏。
+    * **系统调用栈**: 完成 `open/close/read/write/link/unlink/mkdir/mknod/chdir/fstat` 等系统调用，配合 `file.c` 的分块写入逻辑确保单次写入不会撑爆日志。
+    * **内核自测**: `kernel/test.c` 覆盖完整生命周期（完整性、并发、崩溃恢复、性能），`make run` 可一次性验证 Lab6+Lab7。
+
 ## 开发环境
 
 * **操作系统**: Ubuntu 22.04 LTS 

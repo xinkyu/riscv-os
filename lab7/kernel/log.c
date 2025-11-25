@@ -31,6 +31,7 @@ static void install_trans(int recovering) {
         struct buf *dbuf = bread(log.dev, log.lh.block[tail]);
         memmove(dbuf->data, lbuf->data, BSIZE);
         bwrite(dbuf);
+        bunpin(dbuf);
         brelse(lbuf);
         brelse(dbuf);
     }
@@ -147,7 +148,7 @@ void log_write(struct buf *b) {
     log.lh.block[i] = b->blockno;
     if (i == log.lh.n) {
         log.lh.n++;
+        bpin(b);
     }
-    bpin(b);
     release(&log.lock);
 }

@@ -1,3 +1,4 @@
+// kernel/fs.c
 #include "defs.h"
 #include "param.h"
 #include "fs.h"
@@ -36,23 +37,27 @@ static void readsb(int dev, struct superblock *sb) {
 static void bzero(int dev, int bno) {
     struct buf *bp = bread(dev, bno);
     memset(bp->data, 0, BSIZE);
-    bwrite(bp); // Changed from log_write to bwrite
+    log_write(bp); // [恢复] 使用 log_write 保证事务原子性
     brelse(bp);
 }
 
 static uint balloc(uint dev) {
     struct buf *bp;
     uint b;
-    for (b = data_start_block(); b < sb.size; b += BPB) {
+    uint start = data_start_block();
+    for (b = 0; b < sb.size; b += BPB) {
         bp = bread(dev, BBLOCK(b, sb));
         for (uint bi = 0; bi < BPB && b + bi < sb.size; bi++) {
+            uint blockno = b + bi;
+            if (blockno < start)
+                continue;
             int m = 1 << (bi % 8);
             if ((bp->data[bi / 8] & m) == 0) {
                 bp->data[bi / 8] |= m;
-                bwrite(bp); // Changed from log_write to bwrite
+                log_write(bp); // [恢复] 使用 log_write
                 brelse(bp);
-                bzero(dev, b + bi);
-                return b + bi;
+                bzero(dev, blockno);
+                return blockno;
             }
         }
         brelse(bp);
@@ -66,14 +71,11 @@ static void bfree(int dev, uint b) {
     uint bi = b % BPB;
     int m = 1 << (bi % 8);
     if ((bp->data[bi / 8] & m) == 0) {
-        // Changed to warning instead of panic to allow recovery/continuation
-        // Also added check to avoid modifying the bitmap if already free
-        printf("warning: bfree: block %d is already free\n", b);
-        brelse(bp);
-        return;
+        // [恢复] 在日志系统保护下，重复释放是严重错误，应当 panic
+        panic("bfree: freeing free block");
     }
     bp->data[bi / 8] &= ~m;
-    bwrite(bp); // Changed from log_write to bwrite
+    log_write(bp); // [恢复] 使用 log_write
     brelse(bp);
 }
 
@@ -121,7 +123,7 @@ struct inode *ialloc(uint dev, short type) {
         if (dip->type == 0) {
             memset(dip, 0, sizeof(*dip));
             dip->type = type;
-            bwrite(bp); // Changed from log_write to bwrite
+            log_write(bp); // [恢复] 使用 log_write
             brelse(bp);
             return iget(dev, inum);
         }
@@ -173,7 +175,7 @@ void iupdate(struct inode *ip) {
     dip->nlink = ip->nlink;
     dip->size = ip->size;
     memmove(dip->addrs, ip->addrs, sizeof(ip->addrs));
-    bwrite(bp); // Changed from log_write to bwrite
+    log_write(bp); // [恢复] 使用 log_write
     brelse(bp);
 }
 
@@ -212,7 +214,7 @@ static uint bmap(struct inode *ip, uint bn) {
         uint *a = (uint*)bp->data;
         if (a[bn] == 0) {
             a[bn] = balloc(ip->dev);
-            bwrite(bp); // Changed from log_write to bwrite
+            log_write(bp); // [恢复] 使用 log_write
         }
         uint r = a[bn];
         brelse(bp);
@@ -289,7 +291,7 @@ int writei(struct inode *ip, int user, uint64 src, uint off, uint n) {
         struct buf *bp = bread(ip->dev, addr);
         uint m = MIN(n - tot, BSIZE - (off + tot) % BSIZE);
         memmove(bp->data + (off + tot) % BSIZE, (void*)(src + tot), m);
-        bwrite(bp); // Changed from log_write to bwrite
+        log_write(bp); // [恢复] 使用 log_write
         brelse(bp);
         tot += m;
     }
@@ -401,9 +403,11 @@ struct inode *nameiparent(char *path, char *name) {
 int count_free_blocks(void) {
     int free = 0;
     uint start = data_start_block();
-    for (uint b = start; b < sb.size; b += BPB) {
+    for (uint b = 0; b < sb.size; b += BPB) {
         struct buf *bp = bread(ROOTDEV, BBLOCK(b, sb));
         for (uint bi = 0; bi < BPB && b + bi < sb.size; bi++) {
+            if (b + bi < start)
+                continue;
             int m = 1 << (bi % 8);
             if ((bp->data[bi / 8] & m) == 0)
                 free++;
@@ -440,6 +444,7 @@ void dump_inode_usage(void) {
     release(&icache.lock);
 }
 
+// 仅供 fs_format 使用的辅助函数，格式化时无并发，可直接 bwrite
 static void bitmap_set(int dev, uint blockno) {
     struct buf *bp = bread(dev, BBLOCK(blockno, sb));
     uint bi = blockno % BPB;
