@@ -1,0 +1,125 @@
+// kernel/vm.c
+#include "riscv.h"
+#include "defs.h"
+#include "virtio.h"
+
+// 内核的根页表
+pagetable_t kernel_pagetable;
+
+// 外部符号，由链接脚本定义
+extern char etext[]; // .text 段的结束地址
+extern char end[];   // 内核的结束地址
+
+// 遍历页表，找到指定虚拟地址对应的PTE。
+static pte_t *walk(pagetable_t pagetable, uint64 va, int alloc) {
+    if (va >= (1L << 39)) {
+        return 0; // 虚拟地址过大
+    }
+    
+    for (int level = 2; level > 0; level--) {
+        pte_t *pte = &pagetable[VPN(va, level)];
+        if (*pte & PTE_V) {
+            pagetable = (pagetable_t)PTE2PA(*pte);
+        } else {
+            if (!alloc || (pagetable = (pagetable_t)kalloc()) == 0) {
+                return 0; // 分配失败
+            }
+            for (int i = 0; i < PGSIZE / sizeof(pte_t); i++) {
+                pagetable[i] = 0;
+            }
+            *pte = PA2PTE(pagetable) | PTE_V;
+        }
+    }
+    return &pagetable[VPN(va, 0)];
+}
+
+// ===== 新增: 用于测试的公开函数 =====
+
+pagetable_t create_pagetable(void) {
+    pagetable_t pt = (pagetable_t)kalloc();
+    if (pt == 0) {
+        return 0;
+    }
+    for (int i = 0; i < PGSIZE / sizeof(pte_t); i++) {
+        pt[i] = 0;
+    }
+    return pt;
+}
+
+int map_page(pagetable_t pt, uint64 va, uint64 pa, int perm) {
+    pte_t *pte = walk(pt, va, 1);
+    if (pte == 0) {
+        return -1;
+    }
+    if (*pte & PTE_V) {
+        printf("map_page: remap is not supported\n");
+        return -1;
+    }
+    *pte = PA2PTE(pa) | perm | PTE_V;
+    return 0;
+}
+
+pte_t *walk_lookup(pagetable_t pt, uint64 va) {
+    return walk(pt, va, 0);
+}
+
+// ===== 原有函数 =====
+
+int mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm) {
+    uint64 a, last;
+    pte_t *pte;
+
+    a = PGROUNDDOWN(va);
+    last = PGROUNDDOWN(va + size - 1);
+
+    for (;;) {
+        if ((pte = walk(pagetable, a, 1)) == 0) {
+            return -1;
+        }
+        if (*pte & PTE_V) {
+            printf("mappages: remap is not supported\n");
+            return -1;
+        }
+        *pte = PA2PTE(pa) | perm | PTE_V;
+        if (a == last) {
+            break;
+        }
+        a += PGSIZE;
+        pa += PGSIZE;
+    }
+    return 0;
+}
+
+// 创建内核页表
+void kvminit(void) {
+    kernel_pagetable = (pagetable_t)kalloc();
+    for (int i = 0; i < PGSIZE / sizeof(pte_t); i++) {
+        kernel_pagetable[i] = 0;
+    }
+
+    // 映射 UART 设备
+    if (mappages(kernel_pagetable, 0x10000000, PGSIZE, 0x10000000, PTE_R | PTE_W) < 0)
+        panic("kvminit: uart map failed");
+
+    // 映射 VirtIO 磁盘 MMIO (0x10001000)
+    // === 修复: 添加错误检查 ===
+    if (mappages(kernel_pagetable, VIRTIO0, PGSIZE, VIRTIO0, PTE_R | PTE_W) < 0)
+        panic("kvminit: virtio map failed");
+
+    // 映射内核代码段 (R-X)
+    if (mappages(kernel_pagetable, 0x80200000, (uint64)etext - 0x80200000, 0x80200000, PTE_R | PTE_X) < 0)
+        panic("kvminit: text map failed");
+
+    // 映射内核数据段和剩余物理内存 (RW-)
+    if (mappages(kernel_pagetable, (uint64)etext, 0x88000000 - (uint64)etext, (uint64)etext, PTE_R | PTE_W) < 0)
+        panic("kvminit: data map failed");
+    
+    printf("kvminit: kernel page table created.\n");
+}
+
+// 激活内核页表
+void kvminithart(void) {
+    w_satp(MAKE_SATP(kernel_pagetable));
+    sfence_vma();
+    printf("kvminithart: virtual memory enabled.\n");
+}

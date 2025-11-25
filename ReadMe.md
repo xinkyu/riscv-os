@@ -50,6 +50,12 @@
     * **系统调用栈**: 完成 `open/close/read/write/link/unlink/mkdir/mknod/chdir/fstat` 等系统调用，配合 `file.c` 的分块写入逻辑确保单次写入不会撑爆日志。
     * **内核自测**: `kernel/test.c` 覆盖完整生命周期（完整性、并发、崩溃恢复、性能），`make run` 可一次性验证 Lab6+Lab7。
 
+* **实验 8**: 内核日志系统 (Kernel Logging & Observability)
+    * **结构化日志框架**: 在 `lab8/kernel/klog.[ch]` 中实现 6 档日志级别、环形缓冲、统计信息以及 `KLOG_*` 宏，支持按级别分别写入缓冲和控制台。
+    * **全局落点示例**: 在 `kmain`、调度器和进程生命周期等关键路径嵌入日志，展示如何追踪系统状态。
+    * **内核自测**: `lab8/kernel/test.c` 新增 Lab8 测试（计数校验、过滤、dump/summary），运行 `run_lab8_tests()` 可验证日志子系统的正确性。
+    * **文档与使用**: `lab8/ReadMe.md` 详细说明设计目标、API 与运行方法，`make run` 将在 Lab6/7 测试后自动执行 Lab8 套件。
+
 ## 开发环境
 
 * **操作系统**: Ubuntu 22.04 LTS 
@@ -58,12 +64,29 @@
 
 ## 编译与执行
 
-1.  **编译内核**：
+1.  **选择实验目录**：
+    ```bash
+    cd lab8   # 或 lab1~lab7 对应目录
+    ```
+
+2.  **编译内核**：
     ```bash
     make
     ```
 
-2.  **在 QEMU 中执行**：
+3.  **在 QEMU 中执行**：
     ```bash
     make run
     ```
+
+4.  **查看日志输出**：Lab8 运行时会打印 `Lab8 Kernel Logging Tests`，并展示 `klog_dump_recent`、`klog_summary` 的输出，可直接观察日志系统行为。
+
+5.  **上传到 `githubtest` 分支**（手动执行）：
+    ```bash
+    git checkout githubtest
+    git pull --rebase
+    git add .
+    git commit -m "Add lab8 kernel logging project"
+    git push origin githubtest
+    ```
+    > 如果本地 `githubtest` 分支尚未创建，可使用 `git checkout -b githubtest origin/githubtest` 先建立跟踪分支。
