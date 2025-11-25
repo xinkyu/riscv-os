@@ -80,13 +80,3 @@
     ```
 
 4.  **查看日志输出**：Lab8 运行时会打印 `Lab8 Kernel Logging Tests`，并展示 `klog_dump_recent`、`klog_summary` 的输出，可直接观察日志系统行为。
-
-5.  **上传到 `githubtest` 分支**（手动执行）：
-    ```bash
-    git checkout githubtest
-    git pull --rebase
-    git add .
-    git commit -m "Add lab8 kernel logging project"
-    git push origin githubtest
-    ```
-    > 如果本地 `githubtest` 分支尚未创建，可使用 `git checkout -b githubtest origin/githubtest` 先建立跟踪分支。
