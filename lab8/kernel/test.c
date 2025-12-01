@@ -94,6 +94,8 @@ static void debug_disk_io(void);
 static void test_klog_counters(void);
 static void test_klog_filtering(void);
 static void test_klog_dumping(void);
+static void test_klog_overflow(void);
+static void test_klog_formatting(void);
 static void reset_klog_defaults(void);
 
 void test_basic_syscalls(void) {
@@ -198,6 +200,8 @@ void run_lab8_tests(void) {
     test_klog_counters();
     test_klog_filtering();
     test_klog_dumping();
+    test_klog_overflow();   
+    test_klog_formatting();
     reset_klog_defaults();
     printf("===== Lab8 Kernel Logging Tests Completed =====\n");
 }
@@ -375,59 +379,166 @@ static void debug_disk_io(void) {
 }
 
 static void test_klog_counters(void) {
-    printf("\n=== Lab8 Test 1: Ring Buffer Counters ===\n");
+    printf("\n=== Lab8 Test 1: Ring Buffer Counters (测试环形缓冲区计数器) ===\n");
     struct klog_stats before, after;
+    
+    // 1. 获取测试前的统计快照
     klog_get_stats(&before);
-    klog_enable_console(0);
-    klog_set_buffer_level(KLOG_LEVEL_TRACE);
-    klog_set_console_level(KLOG_LEVEL_FATAL);
+    
+    // 2. 设置测试环境：关闭控制台输出，记录所有等级日志
+    klog_enable_console(0); 
+    klog_set_buffer_level(KLOG_LEVEL_TRACE); // 允许 TRACE 及以上写入内存
+    klog_set_console_level(KLOG_LEVEL_FATAL); // 仅 FATAL 输出到屏幕
 
+    // 3. 执行写入操作：写入 3 条不同等级的日志
     KLOG_INFO("lab8", "info message at count=%d", before.buffered_entries);
     KLOG_WARN("lab8", "warn message snapshot=%d", before.buffered_entries);
     KLOG_DEBUG("lab8", "debug message snapshot=%d", before.buffered_entries);
 
+    // 4. 获取测试后的统计快照
     klog_get_stats(&after);
+    
+    // 5. 计算增量
     uint64 delta_total = after.total_generated - before.total_generated;
     uint64 delta_stored = after.stored - before.stored;
+    
+    // 6. 验证：产生的日志和存储的日志都应该正好增加 3 条
     assert(delta_total == 3);
     assert(delta_stored == 3);
     printf("  Captured %lu new entries (total delta=%lu)\n", delta_stored, delta_total);
 }
 
 static void test_klog_filtering(void) {
-    printf("\n=== Lab8 Test 2: Level Filtering ===\n");
+    printf("\n=== Lab8 Test 2: Level Filtering (测试日志等级过滤) ===\n");
     klog_enable_console(0);
+    
+    // 1. 关键设置：将缓冲区记录门槛提高到 ERROR
+    // 这意味着 INFO 和 WARN 应该被丢弃
     klog_set_buffer_level(KLOG_LEVEL_ERROR);
+    
     struct klog_stats before, after;
     klog_get_stats(&before);
 
-    KLOG_INFO("lab8", "info should be dropped");
-    KLOG_WARN("lab8", "warn should be dropped");
-    KLOG_ERROR("lab8", "error should be stored");
+    // 2. 执行写入
+    KLOG_INFO("lab8", "info should be dropped");   // 等级过低 -> 丢弃
+    KLOG_WARN("lab8", "warn should be dropped");   // 等级过低 -> 丢弃
+    KLOG_ERROR("lab8", "error should be stored");  // 等级满足 -> 存储
 
+    // 3. 验证结果
     klog_get_stats(&after);
     uint64 stored_delta = after.stored - before.stored;
+    
+    // 4. 断言：虽然写了3条，但只有1条被存储
     assert(stored_delta == 1);
     printf("  Buffer accepted %lu ERROR-level entry\n", stored_delta);
 }
 
 static void test_klog_dumping(void) {
-    printf("\n=== Lab8 Test 3: Dump & Summary ===\n");
+    printf("\n=== Lab8 Test 3: Dump & Summary (测试日志回溯与摘要) ===\n");
     klog_enable_console(0);
     klog_set_buffer_level(KLOG_LEVEL_TRACE);
     klog_set_console_level(KLOG_LEVEL_FATAL);
 
+    // 1. 填充数据：写入 6 条日志
     for (int i = 0; i < 6; i++) {
         KLOG_DEBUG("lab8", "ring entry #%d", i);
     }
 
+    // 2. 测试回溯功能
+    // 虽然缓冲区有新旧数据，这里要求只打印最近的 4 条
+    // 此处主要通过人工观察输出，验证环形缓冲区读取逻辑是否正确
     printf("  Dumping last 4 entries from kernel log:\n");
     klog_dump_recent(4);
+    
+    // 3. 打印系统摘要，检查 size, next 指针等状态
     printf("  Log summary snapshot:\n");
     klog_summary();
 }
 
+// 环形缓冲区溢出与回绕测试 
+static void test_klog_overflow(void) {
+    printf("\n=== Lab8 Test 4: Ring Buffer Overflow (测试缓冲区溢出与回绕) ===\n");
+    
+    // 1. 准备环境
+    klog_enable_console(0); // 关闭控制台以免刷屏
+    klog_set_buffer_level(KLOG_LEVEL_TRACE); // 记录所有日志
+
+    struct klog_stats start_stats;
+    klog_get_stats(&start_stats);
+
+    // 2. 执行溢出写入
+    // KLOG_BUFFER_SIZE 通常是 256。
+    // 我们写入 300 条日志，这应该迫使缓冲区回绕 (Wrap-around) 并覆盖旧数据。
+    int total_writes = KLOG_BUFFER_SIZE + 50; 
+    printf("  Generating %d log entries (buffer size is %d)...\n", total_writes, KLOG_BUFFER_SIZE);
+
+    for (int i = 0; i < total_writes; i++) {
+        // 格式化包含序号，方便确认 dump 出来的是哪一条
+        KLOG_INFO("ovfl", "overflow test message sequence #%d", i);
+    }
+
+    // 3. 验证统计数据
+    struct klog_stats end_stats;
+    klog_get_stats(&end_stats);
+
+    uint64 overwritten_delta = end_stats.overwritten - start_stats.overwritten;
+    
+    // 理论上应该覆盖了 (300 - 256) = 44 条左右（取决于测试前缓冲区是否已满）
+    // 只要 overwritten_delta > 0，就证明覆盖机制生效了
+    if (overwritten_delta > 0) {
+        printf("  [PASS] Overwritten counter increased by %lu (Expected behavior)\n", overwritten_delta);
+    } else {
+        printf("  [FAIL] Overwritten counter did not increase! Ring buffer logic failure.\n");
+        // 如果这里失败，说明你的 buffer 没有循环，或者 klog.next 索引越界了
+    }
+
+    // 4. 验证数据一致性
+    printf("  Dumping last 5 entries (Should show sequence #%d to #%d):\n", 
+           total_writes - 5, total_writes - 1);
+    
+    // 打开控制台以查看 dump 结果
+    klog_enable_console(1); 
+    klog_dump_recent(5);
+    klog_enable_console(0); // 再次关闭
+}
+
+// --- 新增测试 5: 格式化与边界截断测试 ---
+static void test_klog_formatting(void) {
+    printf("\n=== Lab8 Test 5: Formatting & Truncation (测试格式化与截断) ===\n");
+    klog_enable_console(0);
+    klog_set_buffer_level(KLOG_LEVEL_INFO);
+
+    // 1. 测试复杂格式化占位符
+    // 验证 %x (十六进制), %d (负数), %s (字符串), %p (指针) 是否由 kvsnprintf 正确处理
+    int val_dec = -12345;
+    unsigned int val_hex = 0xABCD1234;
+    const char *val_str = "HelloKernel";
+    void *val_ptr = (void *)0x80200000;
+
+    KLOG_INFO("fmt", "CHECK: Dec=%d Hex=%x Str=%s Ptr=%p", val_dec, val_hex, val_str, val_ptr);
+
+    // 2. 测试超长字符串截断 (Buffer Overflow Protection)
+    // 构造一个超过 KLOG_MESSAGE_MAX (160字节) 的长字符串
+    char long_msg[200];
+    for (int i = 0; i < 199; i++) {
+        long_msg[i] = 'A'; // 填充 'A'
+    }
+    long_msg[199] = '\0';
+
+    // 尝试写入超长消息
+    KLOG_INFO("trunc", "LONG: %s", long_msg);
+
+    // 3. 输出结果供人工核对
+    printf("  Dumping formatting tests. Please verify manually:\n");
+    printf("  1. Check if Dec/Hex/Str/Ptr are correct.\n");
+    printf("  2. Check if 'LONG:' message is truncated (not crashing the kernel).\n");
+    
+    klog_enable_console(1);
+    klog_dump_recent(2); // 打印刚才那两条
+}
+
 static void reset_klog_defaults(void) {
+    // 恢复到系统默认的可用状态，以免影响后续内核运行
     klog_enable_console(1);
     klog_set_buffer_level(KLOG_LEVEL_TRACE);
     klog_set_console_level(KLOG_LEVEL_WARN);

@@ -45,4 +45,4 @@ make run
 - 提供 `sys_klog_*` 系统调用，把缓冲内容暴露给用户态调试工具。
 - 为日志增加时间范围过滤、二进制导出，便于离线分析。
 
-> 阅读顺序推荐：`kernel/klog.[ch]` → `kernel/main.c` → `kernel/proc.c` → `kernel/test.c`，即可掌握 Lab8 的全部改动。
+> 阅读顺序推荐：`kernel/klog.[ch]` → `kernel/main.c` → `kernel/proc.c` → `kernel/test.c`

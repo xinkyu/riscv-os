@@ -2,7 +2,9 @@
 #define __KLOG_H__
 
 #include "riscv.h"
-
+#define KLOG_BUFFER_SIZE    256
+#define KLOG_MESSAGE_MAX    160
+#define KLOG_COMPONENT_MAX  16
 // Logging levels (ascending verbosity)
 enum klog_level {
     KLOG_LEVEL_TRACE = 0,
