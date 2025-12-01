@@ -53,8 +53,9 @@
 * **实验 8**: 内核日志系统 (Kernel Logging & Observability)
     * **结构化日志框架**: 在 `lab8/kernel/klog.[ch]` 中实现 6 档日志级别、环形缓冲、统计信息以及 `KLOG_*` 宏，支持按级别分别写入缓冲和控制台。
     * **全局落点示例**: 在 `kmain`、调度器和进程生命周期等关键路径嵌入日志，展示如何追踪系统状态。
-    * **内核自测**: `lab8/kernel/test.c` 新增 Lab8 测试（计数校验、过滤、dump/summary），运行 `run_lab8_tests()` 可验证日志子系统的正确性。
-    * **文档与使用**: `lab8/ReadMe.md` 详细说明设计目标、API 与运行方法，`make run` 将在 Lab6/7 测试后自动执行 Lab8 套件。
+    * **用户态可观测性**: 内核提供 `klog_read()` 与 `sys_klog` 系统调用，`test_klog_syscall_stream()` 示范如何在用户态循环抓取环形缓冲，类似轻量级 `dmesg -c`。
+    * **内核自测**: `lab8/kernel/test.c` 新增 Lab8 测试（计数校验、过滤、dump/summary、环形缓冲区溢出、kvsnprintf 输出与截断、sys_klog 流式消费），运行 `run_lab8_tests()` 可验证日志子系统的正确性。
+    * **文档与使用**: `lab8/ReadMe.md` 详细说明设计目标、API 与运行方法，并提供用户态监听程序示例；`make run` 将在 Lab6/7 测试后自动执行 Lab8 套件。
 
 ## 开发环境
 
@@ -80,3 +81,4 @@
     ```
 
 4.  **查看日志输出**：Lab8 运行时会打印 `Lab8 Kernel Logging Tests`，并展示 `klog_dump_recent`、`klog_summary` 的输出，可直接观察日志系统行为。
+5.  **用户态抓取日志**：参考 `test_klog_syscall_stream()`，利用 `sys_klog` 连续读取内核环形缓冲，可快速搭建自定义的日志监听或落盘工具。

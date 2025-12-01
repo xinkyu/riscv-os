@@ -96,7 +96,7 @@ static int fdalloc(struct file *f) {
     return -1;
 }
 
-int sys_dup(void) {
+uint64 sys_dup(void) {
     struct file *f;
     if (argfd(0, 0, &f) < 0)
         return -1;
@@ -107,7 +107,7 @@ int sys_dup(void) {
     return fd;
 }
 
-int sys_read(void) {
+uint64 sys_read(void) {
     struct file *f;
     uint64 p;
     int n;
@@ -116,7 +116,7 @@ int sys_read(void) {
     return fileread(f, p, n);
 }
 
-int sys_write(void) {
+uint64 sys_write(void) {
     struct file *f;
     uint64 p;
     int n;
@@ -145,7 +145,7 @@ int sys_write(void) {
     return filewrite(f, p, n);
 }
 
-int sys_close(void) {
+uint64 sys_close(void) {
     int fd;
     struct file *f;
     if (argfd(0, &fd, &f) < 0)
@@ -155,7 +155,7 @@ int sys_close(void) {
     return 0;
 }
 
-int sys_fstat(void) {
+uint64 sys_fstat(void) {
     struct file *f;
     uint64 addr;
     if (argfd(0, 0, &f) < 0 || argaddr(1, &addr) < 0)
@@ -163,7 +163,7 @@ int sys_fstat(void) {
     return filestat(f, addr);
 }
 
-int sys_link(void) {
+uint64 sys_link(void) {
     char name[DIRSIZ], new[MAXPATH], old[MAXPATH];
     struct inode *dp, *ip;
 
@@ -207,7 +207,7 @@ bad:
     return -1;
 }
 
-int sys_unlink(void) {
+uint64 sys_unlink(void) {
     struct inode *ip, *dp;
     struct dirent de;
     char name[DIRSIZ], path[MAXPATH];
@@ -259,7 +259,7 @@ bad:
     return -1;
 }
 
-int sys_open(void) {
+uint64 sys_open(void) {
     char path[MAXPATH];
     int omode;
     struct file *f;
@@ -320,7 +320,7 @@ int sys_open(void) {
     return fd;
 }
 
-int sys_mkdir(void) {
+uint64 sys_mkdir(void) {
     char path[MAXPATH];
     if (argstr(0, path, sizeof(path)) < 0)
         return -1;
@@ -335,7 +335,7 @@ int sys_mkdir(void) {
     return 0;
 }
 
-int sys_mknod(void) {
+uint64 sys_mknod(void) {
     char path[MAXPATH];
     int major, minor;
     if (argstr(0, path, sizeof(path)) < 0 || argint(1, &major) < 0 || argint(2, &minor) < 0)
@@ -351,7 +351,7 @@ int sys_mknod(void) {
     return 0;
 }
 
-int sys_chdir(void) {
+uint64 sys_chdir(void) {
     char path[MAXPATH];
     struct inode *ip;
     if (argstr(0, path, sizeof(path)) < 0)

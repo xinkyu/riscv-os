@@ -61,6 +61,7 @@ int stub_dup(int fd) { return do_syscall(SYS_dup, fd, 0, 0); }
 int stub_link(const char *old, const char *newp) { return do_syscall(SYS_link, (uint64)old, (uint64)newp, 0); }
 int stub_mknod(const char *path, int major, int minor) { return do_syscall(SYS_mknod, (uint64)path, major, minor); }
 int stub_fstat(int fd, struct stat *st) { return do_syscall(SYS_fstat, fd, (uint64)st, 0); }
+int stub_klog(char *buf, int len) { return do_syscall(SYS_klog, (uint64)buf, len, 0); }
 
 static void build_name(char *buf, const char *prefix, int idx) {
     int i = 0;
@@ -96,6 +97,7 @@ static void test_klog_filtering(void);
 static void test_klog_dumping(void);
 static void test_klog_overflow(void);
 static void test_klog_formatting(void);
+static void test_klog_syscall_stream(void);
 static void reset_klog_defaults(void);
 
 void test_basic_syscalls(void) {
@@ -202,6 +204,7 @@ void run_lab8_tests(void) {
     test_klog_dumping();
     test_klog_overflow();   
     test_klog_formatting();
+    test_klog_syscall_stream();
     reset_klog_defaults();
     printf("===== Lab8 Kernel Logging Tests Completed =====\n");
 }
@@ -535,6 +538,41 @@ static void test_klog_formatting(void) {
     
     klog_enable_console(1);
     klog_dump_recent(2); // 打印刚才那两条
+}
+
+static void test_klog_syscall_stream(void) {
+    printf("\n=== Lab8 Test 6: sys_klog Streaming (用户态循环读取) ===\n");
+    klog_enable_console(0);
+    klog_set_buffer_level(KLOG_LEVEL_TRACE);
+
+    // 1. 预先写入多条日志，确保需要多次 sys_klog 才能全部读出
+    for (int i = 0; i < 12; i++) {
+        KLOG_INFO("user", "user-mode reader seed #%d", i);
+    }
+
+    char buf[128];
+    int chunk = 0;
+    int total = 0;
+
+    // 2. 模拟用户态循环调用 sys_klog，逐块打印日志内容
+    while (chunk < 16) {
+        int n = stub_klog(buf, sizeof(buf) - 1);
+        if (n <= 0) {
+            if (chunk == 0) {
+                printf("  sys_klog returned no data (ring buffer empty).\n");
+            }
+            break;
+        }
+        if (n >= sizeof(buf)) {
+            n = sizeof(buf) - 1;
+        }
+        buf[n] = '\0';
+        printf("  [user] chunk %d (%d bytes):\n%s", chunk, n, buf);
+        total += n;
+        chunk++;
+    }
+
+    printf("  Total bytes streamed via sys_klog: %d\n", total);
 }
 
 static void reset_klog_defaults(void) {

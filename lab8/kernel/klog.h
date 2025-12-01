@@ -34,6 +34,7 @@ void klog_enable_console(int enable);
 void klog_dump_recent(int max_entries);
 void klog_summary(void);
 void klog_get_stats(struct klog_stats *stats);
+int klog_read(uint64 user_buf, int n);
 
 #define KLOG_TRACE(component, fmt, ...) \
     klog_write(KLOG_LEVEL_TRACE, component, fmt, ##__VA_ARGS__)

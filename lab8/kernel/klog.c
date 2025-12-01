@@ -1,7 +1,7 @@
 #include <stdarg.h>
 #include "defs.h"
 #include "klog.h"
-
+#include "proc.h"
 
 // 日志条目结构体：存储单条日志的所有元数据
 struct klog_record {
@@ -364,4 +364,74 @@ void klog_get_stats(struct klog_stats *stats) {
     stats->console_level = klog.console_level;
     stats->console_enabled = klog.console_enabled;
     release(&klog.lock);
+}
+
+// 这是一个内核内部的辅助函数，用于将日志导出给 sys_klog
+// 它会“消费”掉日志（类似于 dmesg -c 或管道读取）
+int klog_read(uint64 user_buf, int n) {
+    int tot_read = 0;
+    char *dst = (char*)user_buf;
+    
+    // 循环读取，直到缓冲区空了或者用户提供的 buffer 满了
+    while (1) {
+        acquire(&klog.lock);
+        
+        if (klog.count == 0 || n <= 0) {
+            release(&klog.lock);
+            break;
+        }
+
+        // 1. 定位最旧的一条日志 (Tail)
+        int idx = (klog.next - klog.count + KLOG_BUFFER_SIZE) % KLOG_BUFFER_SIZE;
+        struct klog_record *rec = &klog.buffer[idx];
+
+        // 2. 将结构化日志格式化为文本（暂存到内核栈中）
+        // 格式: [LEVEL][time=...][comp] msg...
+        char line[256];
+        char *ptr = line;
+        int rem = sizeof(line);
+        
+        // 利用现有的 append_xxx 函数 (假设它们在 klog.c 中可用且未被删除)
+        // 如果 append_xxx 是 static 的，确保此函数在它们之后定义
+        append_char(&ptr, &rem, '['); 
+        append_string(&ptr, &rem, level_names[clamp_level(rec->level)]); 
+        append_char(&ptr, &rem, ']');
+        
+        append_string(&ptr, &rem, "[t="); 
+        append_uint(&ptr, &rem, rec->timestamp, 10, 0); 
+        append_char(&ptr, &rem, ']');
+
+        append_char(&ptr, &rem, '['); 
+        append_string(&ptr, &rem, rec->component); 
+        append_char(&ptr, &rem, ']');
+        
+        append_char(&ptr, &rem, ' '); 
+        append_string(&ptr, &rem, rec->message);
+        append_char(&ptr, &rem, '\n');
+        
+        // 计算这一行的长度
+        int len = sizeof(line) - rem;
+        
+        // 如果用户 buffer 剩下的空间不够放下这一行，就停止
+        if (len > n) {
+            release(&klog.lock);
+            break;
+        }
+
+        // 3. 标记为已消费 (将 Tail 向前移动)
+        klog.count--;
+        
+        // 4. 释放锁 (在执行 copyout 这种耗时操作前必须释放自旋锁)
+        release(&klog.lock);
+
+        // 5. 拷贝到用户空间 (用户地址被直接映射)
+        memmove(dst, line, len);
+
+        // 更新指针
+        dst += len;
+        n -= len;
+        tot_read += len;
+    }
+    
+    return tot_read;
 }
