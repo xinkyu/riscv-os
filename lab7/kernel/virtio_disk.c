@@ -4,9 +4,8 @@
 #include "fs.h"
 #include "virtio.h"
 
-// ... (结构体定义和 helper 函数保持不变) ...
-// ... (请保留之前的 disk 结构体, NUM, virtio_blk_req 等定义) ...
-
+//实现了对 virtio 块设备的读写操作。
+//将内核的读写请求（request）放入 virtio 的描述符环（中，通知模拟硬件进行数据传输，并处理磁盘中断。
 #define NUM 8
 
 struct virtio_blk_req {
@@ -79,7 +78,7 @@ static void free_chain(int i) {
 }
 
 void virtio_disk_init(void) {
-    // ... (保持你现在的 Modern 模式初始化代码不变) ...
+
     spinlock_init(&disk.lock, "virtio_disk");
 
     uint32 magic = r32(VIRTIO_MMIO_MAGIC_VALUE);
@@ -201,7 +200,7 @@ void virtio_disk_rw(struct buf *b, int write) {
     else
         disk_reads++;
 
-    // === 关键修复：使用轮询代替 sleep，以支持启动阶段 ===
+    // 使用轮询代替 sleep，以支持启动阶段 
     while (disk.info[idx[0]].status == 0xff) {
         // 释放锁，允许中断处理程序（如果有的话）运行
         release(&disk.lock);

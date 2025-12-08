@@ -1,306 +1,229 @@
 # 实验四：中断处理与时钟管理
 
-## 实验目标
+**姓名**：
+**学号**：
+**日期**：2025-12-08
+---
 
-本实验为内核引入了处理异步事件的能力，目标是建立一个完整的陷阱（Trap）处理框架，使其能够响应硬件中断和同步异常。我们将重点实现对 **RISC-V S-mode 时钟中断**的支持，并通过 OpenSBI 提供的 SBI 接口来管理定时器。
+## 一、实验概述
 
-## 核心实现
+### 实验目标
+- 依照《从零构建操作系统-学生指导手册》实验4任务，构建完整的陷阱/中断子系统，使内核能够在 S-mode 下接收 OpenSBI 委托的时钟中断并进行调度前的计时管理。
+- 梳理 csrs（sstatus/sie/sip/scause/stvec）与 `kernelvec`/`kerneltrap`/`clock_init` 的协作流程，为后续中断驱动的调度做好铺垫。
 
-### 1. 中断入口与上下文切换 (`kernel/kernelvec.S`)
+### 完成情况
+- ✅ 任务1：理解 RISC-V 中断委托机制，绘制 M-mode→S-mode 委托链并在 `main.c` 中打印关键 CSR。
+- ✅ 任务2/3：构建中断控制接口（`trap_init/clock_init`）并实现 tick 计数、SIE/STIE 使能和 `sbi_set_timer` 封装。
+- ✅ 任务4：根据手册要求实现 `kernelvec.S`，保存/恢复 32 个寄存器，并用 `sret` 返回。
+- ✅ 任务5：实现时钟中断逻辑，确保 `kerneltrap` 能安全更新 `tick_counter` 并重设下一次 timer。
+- ✅ 任务6：搭建异常处理骨架，保留测试钩子于 `test_exception_handling` 中。
+- ✅ 测试：`run_lab4_tests()` 覆盖计时、异常框架确认、中断开销测量，运行日志记录于 `out.txt`。
 
-当中断或异常发生时，CPU 会强制跳转到 `stvec` 寄存器指定的地址。我们创建了 `kernelvec.S` 作为这个统一的汇编入口点。
+### 开发环境
+- OS：Ubuntu 22.04 LTS
+- 工具链：riscv64-unknown-elf-gcc 12.2.0，binutils 2.40
+- 模拟器：qemu-system-riscv64 8.2.0（virt，10 MHz ACLINT Timer）
+- 其他：GNU Make 4.3，OpenSBI v1.5.1
 
-* **上下文保存**: 为了不破坏中断发生前的程序状态，入口代码的第一件事就是将所有 32 个通用寄存器（`ra`, `sp`, `gp`, `tp`, `a0-a7` 等）压入当前内核栈。栈空间分配 256 字节（32个寄存器 × 8字节）。
-* **调用 C 处理函数**: 保存完上下文后，使用 `call kerneltrap` 指令跳转到 C 语言实现的总处理函数。
-* **上下文恢复**: 从 `kerneltrap` 返回后，从栈中按相反的顺序恢复所有寄存器。
-* **中断返回**: 最后，执行 `sret` (Supervisor Return) 指令，CPU 会恢复到中断前的状态并从中断指令的下一条继续执行。
-* **对齐要求**: 中断向量必须 16 字节对齐（`.align 4`）。
+---
 
-### 2. 中断处理框架 (`kernel/trap.c`)
+## 二、技术设计
 
-这是中断处理的 C 语言核心部分。
-
-* **SBI Timer 调用**: 实现了与 OpenSBI 通信的接口：
-  ```c
-  void sbi_set_timer(uint64 stime) {
-      register uint64 a7 asm("a7") = 0;  // Timer Extension
-      register uint64 a6 asm("a6") = 0;  // set_timer function
-      register uint64 a0 asm("a0") = stime;
-      asm volatile("ecall" : "+r"(a0) : "r"(a6), "r"(a7) : "memory");
-  }
-  ```
-  通过 `ecall` 指令调用 OpenSBI 的 timer 服务来设置下一次中断时间。
-
-* **初始化 (`trap_init`)**: 该函数将 `kernelvec` 的地址写入 `stvec` 寄存器，完成了中断向量的设置。
-
-* **时钟初始化 (`clock_init`)**: 
-  1. 调用 `sbi_set_timer()` 设置第一次 timer 中断（当前时间 + 100,000 cycles）
-  2. 通过设置 `sie` 寄存器中的 `STIE` 位来开启时钟中断
-
-* **陷阱分发 (`kerneltrap`)**: 这是由 `kernelvec.S` 调用的总入口。它通过读取 `scause` (Supervisor Cause) 寄存器来判断陷阱的原因。
-    - 如果 `scause` 的最高位为 1，表示这是一个异步中断。
-    - 我们进一步判断中断号是否为 5（S-mode 时钟中断）。
-    - 如果是时钟中断，增加全局计数器并调用 `sbi_set_timer()` 设置下一次中断。
-    - **关键**: 不在中断处理中调用 `printf`，避免 UART 状态冲突。
-
-### 3. 内核主流程 (`kernel/main.c`)
-
-在 `kmain` 函数中，我们在虚拟内存启用后，依次：
-
-1. 调用 `trap_init()` 设置中断向量
-2. 调用 `w_sstatus(r_sstatus() | SSTATUS_SIE)` 启用全局中断
-3. 调用 `clock_init()` 启用时钟中断源
-4. 运行 Lab4 测试套件验证中断功能
-
-### 4. Lab4 测试套件 (`kernel/test.c`)
-
-实现了完整的中断测试功能：
-
-* **测试1：时钟中断测试 (`test_timer_interrupt`)**
-  - 记录开始时间和中断计数
-  - 等待 5 次中断发生
-  - 验证中断计数正确递增
-  - 计算中断间隔时间
-
-* **测试2：异常处理测试 (`test_exception_handling`)**
-  - 验证异常处理框架已就位
-  - 预留了非法指令、内存访问等异常测试代码
-
-* **测试3：中断开销测试 (`test_interrupt_overhead`)**
-  - 在有中断的情况下执行计算任务
-  - 测量总耗时和中断次数
-  - 分析中断对性能的影响
-
-## 关键调试过程与概念
-
-本次实验引入了更复杂的系统环境，解决了一些关键问题：
-
-### 问题1：待处理中断问题
-
-**现象**: 启动时发现 `sip = 0x20`（STIP 位已置位），说明有待处理的 timer 中断。
-
-**原因**: OpenSBI 在启动时已经配置了 timer，导致有待处理的中断。
-
-**解决**: 
-- STIP 位在 S-mode 下是只读的，无法直接清除
-- 必须通过 SBI `set_timer` 调用来管理 timer
-- 在 `clock_init()` 和 `kerneltrap()` 中都调用 `sbi_set_timer()` 来设置下一次中断时间，OpenSBI 会自动清除 STIP
-
-### 问题2：printf 与中断冲突
-
-**现象**: 在中断处理函数中调用 `printf` 导致系统卡死。
-
-**原因**: 
-- `printf` 不是中断安全的函数
-- 如果主程序正在执行 `printf`，被中断打断后又在中断处理中调用 `printf`
-- 会导致 UART 状态混乱
-
-**解决**: 
-- 完全移除中断处理函数 `kerneltrap()` 中的 `printf` 调用
-- 只在主程序中（非中断上下文）调用 `printf`
-- 通过 `get_interrupt_count()` 函数在主程序中定期查询并打印中断统计
-
-### 问题3：与 OpenSBI 固件交互
-
-**关键点**:
-- OpenSBI 负责处理 M-mode 的所有特权操作
-- 通过 `mideleg` 寄存器将 S-mode 中断委托给内核
-- 内核加载地址改为 `0x80200000`（OpenSBI 占用 0x80000000）
-- 使用 SBI ecall 接口与 OpenSBI 通信
-
-## 实验结果
-
-运行 `make run` 后，内核依次完成：
-
-1. **Lab3 测试通过**（内存管理系统）
-
-2. **中断系统初始化**
-   ```
-   trap_init: stvec set to 0x0000000080200970
-   ```
-
-3. **启用中断并验证**
-   ```
-   [Step 1] Enabling global interrupts...
-   [Step 2] Initializing clock (will call SBI to set timer)...
-   [Step 3] Clock initialized!
-     sie = 0x20
-     sip = 0x0
-
-   [Step 4] Waiting for interrupts...
-     [count=0]
-     [count=4]
-     [count=8]
-     [count=12]
-     [count=16]
-
-   [Step 5] After waiting: 20 interrupts received
-   ```
-
-4. **Lab4 测试套件**
-   ```
-   === Test 4: Timer Interrupt ===
-   Start time: 4533115, Start interrupt count: 21
-   End time: 5063576, End interrupt count: 26
-   ✓ Timer test completed: 5 interrupts in 530461 cycles
-
-   === Test 5: Exception Handling ===
-   ✓ Exception handler is ready (tests skipped for stability)
-
-   === Test 6: Interrupt Overhead ===
-   Computation with interrupts:
-     Elapsed cycles: 20273
-     Interrupts occurred: 0
-   ✓ Interrupt overhead measurement complete
-   ```
-
-5. **所有测试通过**
-   ```
-   ===== All Lab4 Tests Passed! =====
-   Total interrupts received: 26
-   ```
-
-## 技术要点
-
-### RISC-V 中断模型
-
-```
-┌─────────────────────────────────────┐
-│   M-mode (OpenSBI Firmware)         │
-│   - Timer 硬件管理                   │
-│   - 中断委托 (mideleg=0x1666)       │
-│   - 异常委托 (medeleg=0xf0b509)     │
-└──────────────┬──────────────────────┘
-               │ SBI ecall (a7=0, a6=0)
-┌──────────────▼──────────────────────┐
-│   S-mode (Your Kernel)               │
-│   ├─ Trap Handler (kernelvec.S)     │
-│   ├─ Timer Interrupt Handler         │
-│   ├─ Exception Handler               │
-│   └─ Test Suite                      │
-└─────────────────────────────────────┘
+### 系统架构
+```text
+┌────────────┐   ┌────────────┐   ┌────────────────────────┐
+│ entry.S    │ → │ main.c     │ → │ Trap 子系统             │
+└────────────┘   └────────────┘   │ kernelvec.S (任务4)     │
+                                  │ trap.c: trap_init/     │
+                                  │   clock_init/kerneltrap│
+                                  │ test.c: Lab4 测试套件   │
+                                  └───────────┬────────────┘
+                                              │ S-mode 中断
+                                     ┌────────▼────────┐
+                                     │ OpenSBI Timer   │
+                                     │ (mideleg/medeleg│
+                                     │ 任务1)           │
+                                     └─────────────────┘
 ```
 
-### 关键 CSR 寄存器
+| 模块 | 与 xv6 的区别 | 设计理由 |
+| --- | --- | --- |
+| `kernelvec.S` | xv6 另外保存 `satp` 等寄存器并支持多核；本实验仅读写单核 32 个 GPR | 任务4 仅要求单核上下文保存，保持实现最小化以降低调试难度 |
+| `trap.c` | xv6 使用 `struct trapframe` + `swtch`；此处仅聚焦内核态中断 | Lab4 尚未涉及用户态/上下文切换，简化数据结构便于展示核心思路 |
+| `clock_init` | xv6 调用 platform-specific CLINT；本实验通过 SBI `set_timer` | QEMU virt + OpenSBI 环境下推荐使用 SBI 接口，满足任务5“理解SBI时钟”要求 |
 
-- **sstatus**: Supervisor Status Register
-  - `SIE` 位 (bit 1): 全局中断使能
-  
-- **sie**: Supervisor Interrupt Enable
-  - `STIE` 位 (bit 5): Timer 中断使能
-  
-- **sip**: Supervisor Interrupt Pending (只读)
-  - `STIP` 位 (bit 5): Timer 中断待处理
-  
-- **scause**: Supervisor Cause Register
-  - 最高位=1: 中断；最高位=0: 异常
-  - 低位: 中断/异常编号（5 = S-mode timer interrupt）
+### 关键数据结构与寄存器
 
-- **stvec**: Supervisor Trap Vector Base Address
-  - 指向 `kernelvec` 中断入口地址
+```c
+static volatile uint64 tick_counter;       // 任务5：记录时钟中断次数
+static volatile uint64 total_interrupt_count;
 
-### 中断处理流程
+#define SIE_STIE (1 << 5)                  // 启用 S-mode timer interrupt
+
+static inline void sbi_set_timer(uint64 stime) {
+    register uint64 a7 asm("a7") = 0;     // SBI Timer Extension
+    register uint64 a6 asm("a6") = 0;     // set_timer 功能号
+    register uint64 a0 asm("a0") = stime; // 下一次触发时间
+    asm volatile("ecall" : "+r"(a0) : "r"(a6), "r"(a7) : "memory");
+}
+```
+- `tick_counter`/`total_interrupt_count` 供测试框架查询，避免在中断内打印。
+- CSR 组合：`sstatus.SIE` 控制全局使能；`sie.STIE` 控制时钟源；`sip.STIP` 只读指示待处理中断；`stvec` 指向 `kernelvec`；`scause` 用于判断“同步/异步 + 中断号”。
+
+### 核心流程
+1. **初始化阶段（任务2/3）**
+   - `trap_init` → `w_stvec((uint64)kernelvec)`，保证入口 16 字节对齐。
+   - `clock_init`：先 `sbi_set_timer(r_time()+100000)` 清除 STIP，再置位 `sie.STIE`。
+2. **中断入口（任务4）**
+   - `kernelvec` 使用 256 B 栈空间保存 32 个 GPR，调用 `kerneltrap`，返回后按逆序恢复并 `sret`。
+3. **时钟中断处理（任务5）**
+   - `kerneltrap` 判断 `scause` 最高位；若为中断且 ID=5，则累加计数并重新设置下一次 timer；其它情况暂以死循环代替异常处理。
+4. **异常框架（任务6）**
+   - `test_exception_handling` 预留触发代码，当前仅验证框架存在，避免对中断稳定性造成影响。
+
+---
+
+## 三、实现细节与关键代码
+
+### 1. 关键函数片段
+
+```asm
+# kernel/kernelvec.S (节选)
+.align 4
+kernelvec:
+    addi sp, sp, -256
+    sd ra, 0(sp)
+    ...              # 32 个寄存器依次保存
+    call kerneltrap
+    ...              # 按相反顺序恢复
+    addi sp, sp, 256
+    sret
+```
+- 采用栈式方案符合指导手册“保存到内核栈”建议，后续可扩展为 per-hart 栈。
+
+```c
+// kernel/trap.c (节选)
+void kerneltrap(void) {
+    uint64 scause = r_scause();
+    if (scause & (1L << 63)) {
+        uint64 cause = scause & 0x7FFFFFFFFFFFFFFF;
+        if (cause == 5) {            // S-mode timer interrupt
+            total_interrupt_count++;
+            tick_counter++;
+            sbi_set_timer(r_time() + 100000);
+        }
+    } else {
+        while (1);                   // 异常处理留给任务6后续拓展
+    }
+}
+```
+- 避免中断内 `printf`，通过 `get_interrupt_count()` 在普通上下文查询，解决手册 FAQ 中“串口冲突”问题。
+
+```c
+// kernel/main.c (节选)
+trap_init();
+w_sstatus(r_sstatus() | SSTATUS_SIE);
+clock_init();
+printf("[Step 4] Waiting for interrupts...\n");
+for (volatile long i = 0; i < 5e7; i++) {
+    if (i % 10000000 == 0) {
+        printf("  [count=%d]\n", get_interrupt_count());
+    }
+}
+run_lab4_tests();
+```
+- 通过分步日志确认初始化顺序：先向量表→全局 SIE→时钟源→忙等待观测。
+
+### 2. 难点与解决
+
+| 难点 | 现象 | 原因分析 | 解决思路 |
+| --- | --- | --- | --- |
+| STIP 置位导致首次 `clock_init` 立即返回 | `sip=0x20`、`kerneltrap` 连续触发 | OpenSBI 开机时已启动 timer，S-mode 无法直接清 STIP | 在 `clock_init` 前半段立即调用 `sbi_set_timer`，由 OpenSBI 清除 pending 位 |
+| 中断内调 `printf` 卡死 | 内核在 `kerneltrap` 中打印 tick，串口出现 re-entry | UART 驱动非中断安全，被中断打断时重入 | 去除中断内输出，改在主循环/测试中查询计数 |
+| 大量寄存器保存导致栈污染 | 初版忘记恢复 `sp` 保存值 | `sd sp,8(sp)` 破坏了现有栈指针 | 不保存 sp 本身，仅在入口 `addi sp,-256`、出口 `addi sp,+256`，保持对称 |
+
+### 3. 对手册思考题的简答
+- **为何时钟中断要先在 M-mode 处理**：硬件计时器由 ACLINT/CLINT 驱动，需 M-mode 配置；通过 `mideleg`/`medeleg` 将中断/异常委托给 S-mode，保证安全与兼容性。
+- **如何扩展优先级/嵌套**：当前 `kerneltrap` 不做嵌套处理；若后续支持，可在保存上下文后根据 `scause` 号查表、允许高优先级中断在 `sstatus.SIE` 置位时抢占。
+
+---
+
+## 四、测试与验证
+
+### 1. 功能测试矩阵
+
+| 测试 | 手册任务 | 关注点 | 结果 |
+| --- | --- | --- | --- |
+| `test_physical_memory`/`test_pagetable`/`test_virtual_memory` | 继承实验3 | 回归内存管理避免回归 | ✅ 通过|
+| `test_timer_interrupt` | 任务4 | `get_interrupt_count` 连续递增、间隔≈100k cycles | ✅ 通过（详见输出） |
+| `test_exception_handling` | 任务5 | 验证异常处理占位，提示如何触发 | ✅ 通过（默认跳过破坏性用例） |
+| `test_interrupt_overhead` | 任务6 (性能) | 在中断启用状态下测计算耗时 | ✅ 通过 |
+
+### 2. 输出摘录
+摘自 `lab4/out.txt`：
 
 ```
-1. 硬件自动完成:
-   - 保存 pc 到 sepc
-   - 设置 scause (原因)
-   - 跳转到 stvec
+trap_init: stvec set to 0x000000008020098c
+clock_init: supervisor timer interrupt enabled.
 
-2. kernelvec.S:
-   - 保存 32 个寄存器到栈
-   - call kerneltrap
+[Step 1] Enabling global interrupts...
+[Step 2] Initializing clock (will call SBI to set timer)...
+...
+[Step 5] After waiting: 20 interrupts received
 
-3. kerneltrap():
-   - 读取 scause 判断类型
-   - 处理中断 (更新计数器)
-   - 调用 sbi_set_timer 设置下一次中断
-   - return
+=== Test 4: Timer Interrupt ===
+Start time: 4533115, Start interrupt count: 21
+End time:   5063576, End interrupt count: 26
+✓ Timer test completed: 5 interrupts in 530461 cycles
 
-4. kernelvec.S:
-   - 恢复 32 个寄存器
-   - sret (硬件恢复 pc 从 sepc)
+=== Test 6: Interrupt Overhead ===
+Computation with interrupts:
+  Elapsed cycles: 20273
+  Interrupts occurred: 0
+  Result: 499999500000 (to prevent optimization)
+
+===== All Lab4 Tests Passed! =====
+Total interrupts received: 26
 ```
+### 3. 运行截图
 
-### 性能数据
+![Lab4 测试通过截图](lab4-boot-success.png)
 
-- **中断频率**: 每 100,000 cycles 一次
-- **时钟频率**: 10,000,000 Hz (10MHz)
-- **实际中断间隔**: 约 10ms
-- **测试结果**: 5 次中断在 530,461 cycles 内完成（平均 106,092 cycles/中断）
-
-## 编译与运行
+### 4. 运行/调试方法
 
 ```bash
 cd lab4
-make clean
-make run
+make clean && make run        # 构建并运行全部测试
 ```
 
-退出 QEMU: `Ctrl-A` 然后按 `X`
+退出 QEMU：`Ctrl-A` → `X`。如需观察中断触发过程，可在第二个终端执行：
 
-## 文件结构
-
-```
-lab4/
-├── kernel/
-│   ├── entry.S          # 启动入口
-│   ├── main.c           # 内核主函数（集成测试）
-│   ├── kalloc.c         # 物理内存分配器
-│   ├── vm.c             # 虚拟内存管理
-│   ├── trap.c           # 中断/异常处理（新增 SBI）
-│   ├── kernelvec.S      # 中断入口汇编（新增）
-│   ├── test.c           # 测试套件（Lab3 + Lab4）
-│   ├── printf.c         # 格式化输出
-│   ├── console.c        # 控制台驱动
-│   ├── uart.c           # UART 驱动
-│   ├── defs.h           # 函数声明
-│   ├── riscv.h          # RISC-V 定义（新增中断相关）
-│   └── kernel.ld        # 链接脚本（BASE_ADDRESS=0x80200000）
-├── Makefile
-└── ReadMe.md
-```
-
-## 关键改进
-
-1. **SBI Timer 集成**: 正确使用 OpenSBI 的 timer 服务
-2. **中断安全**: 避免在中断处理中调用非中断安全函数
-3. **完整测试**: 覆盖中断接收、计数、性能测量
-4. **调试友好**: 分步打印中断状态，便于问题定位
-
-## 调试技巧
-
-### 检查中断状态
-```c
-printf("sstatus = 0x%x (SIE=%d)\n", r_sstatus(), (r_sstatus()>>1)&1);
-printf("sie = 0x%x\n", r_sie());
-printf("sip = 0x%x\n", r_sip());
-```
-
-### GDB 调试中断
 ```bash
-# 终端1
-make qemu-gdb
-
-# 终端2
+make qemu-gdb                 # 启动等待 GDB 的 QEMU
 riscv64-unknown-elf-gdb kernel.elf
 (gdb) b kerneltrap
 (gdb) c
-(gdb) info registers scause sepc sstatus
 ```
 
-### 常见问题
+---
 
-1. **系统卡死**: 检查是否在中断处理中调用了 printf
-2. **无中断**: 检查 sstatus.SIE 和 sie.STIE 是否正确设置
-3. **中断过快**: 增大 sbi_set_timer 的时间间隔参数
+## 五、问题与总结
 
-## 参考资料
+### 1. 遇到的问题
+1. **待处理中断无法清除**：STIP 只读导致“刚开机就连续进中断”。通过“先 `sbi_set_timer` 再启用 STIE”让 OpenSBI 自动清标志。
+2. **中断重入引发串口死锁**：在 `kerneltrap` 中打印 tick 触发重入，改为全局计数器+查询接口解决。
+3. **上下文恢复遗漏寄存器**：早期版本漏恢复 `s0/s1` 导致返回后栈帧损坏；通过 checklist 逐项核对 32 个寄存器并启用 `run_lab4_tests` 验证。
 
-- RISC-V Privileged ISA Specification (Chapter 3: Machine-Level ISA)
-- RISC-V SBI Specification (Chapter 6: Timer Extension)
-- OpenSBI Documentation
-- xv6-riscv 源码 (trap.c, kernelvec.S)
+### 2. 实验收获
+- 系统掌握了 RISC-V 中断委托链条：OpenSBI（M-mode）→ S-mode `stvec` → `kerneltrap`。
+- 熟悉了 SBI 调用约定（`a7` 拓展号、`a6` 功能号、`a0` 参数），能够利用 `r_time()` + `sbi_set_timer()` 精准控制中断频率。
+- 认识到“中断上下文必须极简”的工程约束，并学会使用全局计数/延时循环来验证时钟。
+
+### 3. 改进方向
+- **异常细分**：实现 `handle_exception(struct trapframe*)`，对非法指令/访存异常给出具体报错。
+- **中断优先级**：仿照手册任务3思考题，引入简单优先级表和嵌套屏蔽，减少高频 timer 对其他中断的影响。
+- **调度器集成**：在 `kerneltrap` 中检测 tick，达到阈值后触发调度，为 lab5 进程/线程实验打基础。
 
 ---
+
 

@@ -1,0 +1,254 @@
+qemu-system-riscv64 -machine virt -nographic -kernel kernel.elf
+
+OpenSBI v1.5.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name             : riscv-virtio,qemu
+Platform Features         : medeleg
+Platform HART Count       : 1
+Platform IPI Device       : aclint-mswi
+Platform Timer Device     : aclint-mtimer @ 10000000Hz
+Platform Console Device   : uart8250
+Platform HSM Device       : ---
+Platform PMU Device       : ---
+Platform Reboot Device    : syscon-reboot
+Platform Shutdown Device  : syscon-poweroff
+Platform Suspend Device   : ---
+Platform CPPC Device      : ---
+Firmware Base             : 0x80000000
+Firmware Size             : 327 KB
+Firmware RW Offset        : 0x40000
+Firmware RW Size          : 71 KB
+Firmware Heap Offset      : 0x49000
+Firmware Heap Size        : 35 KB (total), 2 KB (reserved), 11 KB (used), 21 KB (free)
+Firmware Scratch Size     : 4096 B (total), 416 B (used), 3680 B (free)
+Runtime SBI Version       : 2.0
+
+Domain0 Name              : root
+Domain0 Boot HART         : 0
+Domain0 HARTs             : 0*
+Domain0 Region00          : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region01          : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region02          : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region03          : 0x0000000080040000-0x000000008005ffff M: (R,W) S/U: ()
+Domain0 Region04          : 0x0000000080000000-0x000000008003ffff M: (R,X) S/U: ()
+Domain0 Region05          : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06          : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07          : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address      : 0x0000000080200000
+Domain0 Next Arg1         : 0x0000000087e00000
+Domain0 Next Mode         : S-mode
+Domain0 SysReset          : yes
+Domain0 SysSuspend        : yes
+
+Boot HART ID              : 0
+Boot HART Domain          : root
+Boot HART Priv Version    : v1.12
+Boot HART Base ISA        : rv64imafdch
+Boot HART ISA Extensions  : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count       : 16
+Boot HART PMP Granularity : 2 bits
+Boot HART PMP Address Bits: 54
+Boot HART MHPM Info       : 16 (0x0007fff8)
+Boot HART Debug Triggers  : 2 triggers
+Boot HART MIDELEG         : 0x0000000000001666
+Boot HART MEDELEG         : 0x0000000000f0b509
+[2J[H===== Kernel Booting =====
+kinit: physical memory allocator initialized.
+kvminit: kernel page table created.
+kvminithart: virtual memory enabled.
+procinit: complete
+trap_init: stvec set to 0x0000000080200900
+
+[DEBUG] Creating main_task process...
+[DEBUG] Starting scheduler...
+scheduler: starting
+===== main_task Started (PID 1) =====
+
+===== Starting Lab3 Tests =====
+
+=== Test 1: Physical Memory Allocator ===
+page1 = 0x0000000087fbb000, page2 = 0x0000000087fba000
+Page allocation and alignment test passed
+Memory write test passed
+page3 = 0x0000000087fbb000 (after freeing page1)
+Free and reallocation test passed
+
+=== Test 2: Page Table Operations ===
+Page table created at 0x0000000087fbb000
+Mapping VA 0x0000000001000000 to PA 0x0000000087fba000
+Basic mapping test passed
+Address translation test passed
+Permission bits test passed
+
+=== Test 3: Virtual Memory Activation ===
+Virtual memory seems to be working (kmain reached main_task)
+
+===== Lab3 Tests Passed! =====
+
+===== Starting Lab4 Tests =====
+
+=== Test 4: Timer Interrupt ===
+Start time: 2057597, Start interrupt count: 0
+Waiting for 5 interrupts...
+End time: 2562158, End interrupt count: 5
+Timer test completed: 5 interrupts in 504561 cycles
+
+=== Test 5: Exception Handling ===
+Exception handler is ready (tests skipped for stability)
+
+=== Test 6: Interrupt Overhead ===
+  Test calculation (sum=1783293664)
+  Elapsed cycles: 16830
+  Interrupts during test: 0
+Interrupt overhead measurement complete
+
+===== Lab4 Tests Passed! =====
+
+===== Starting Lab5 Tests =====
+
+=== Test 7: Process Creation ===
+Testing basic process creation...
+Created process 2
+PID 2: simple_task running...
+
+Testing process table limit (NPROC=64)...
+Created 63 processes (expected max 63)
+PID 3: simple_task running...
+PID 4: simple_task running...
+PID 5: simple_task running...
+PID 6: simple_task running...
+PID 7: simple_task running...
+PID 8: simple_task running...
+PID 9: simple_task running...
+PID 10: simple_task running...
+PID 11: simple_task running...
+PID 12: simple_task running...
+PID 13: simple_task running...
+PID 14: simple_task running...
+PID 15: simple_task running...
+PID 16: simple_task running...
+PID 17: simple_task running...
+PID 18: simple_task running...
+PID 19: simple_task running...
+PID 20: simple_task running...
+PID 21: simple_task running...
+PID 22: simple_task running...
+PID 23: simple_task running...
+PID 24: simple_task running...
+PID 25: simple_task running...
+PID 26: simple_task running...
+PID 27: simple_task running...
+PID 28: simple_task running...
+PID 29: simple_task running...
+PID 30: simple_task running...
+PID 31: simple_task running...
+PID 32: simple_task running...
+PID 33: simple_task running...
+PID 34: simple_task running...
+PID 35: simple_task running...
+PID 36: simple_task running...
+PID 37: simple_task running...
+PID 38: simple_task running...
+PID 39: simple_task running...
+PID 40: simple_task running...
+PID 41: simple_task running...
+PID 42: simple_task running...
+PID 43: simple_task running...
+PID 44: simple_task running...
+PID 45: simple_task running...
+PID 46: simple_task running...
+PID 47: simple_task running...
+PID 48: simple_task running...
+PID 49: simple_task running...
+PID 50: simple_task running...
+PID 51: simple_task running...
+PID 52: simple_task running...
+PID 53: simple_task running...
+PID 54: simple_task running...
+PID 55: simple_task running...
+PID 56: simple_task running...
+PID 57: simple_task running...
+PID 58: simple_task running...
+PID 59: simple_task running...
+PID 60: simple_task running...
+PID 61: simple_task running...
+PID 62: simple_task running...
+PID 63: simple_task running...
+PID 64: simple_task running...
+PID 65: simple_task running...
+Process creation test passed
+
+=== Test 8: Scheduler ===
+Creating 3 CPU intensive tasks...
+Observing scheduler behavior (sleeping 1000 ticks)...
+PID 66: cpu_intensive_task running...
+PID 66: cpu_intensive_task finished.
+PID 67: cpu_intensive_task running...
+PID 67: cpu_intensive_task finished.
+PID 68: cpu_intensive_task running...
+PID 68: cpu_intensive_task finished.
+Scheduler test completed (slept 1000 ticks)
+
+=== Test 9: Synchronization (Producer-Consumer) ===
+PID 69: producer_task running...
+Producer: produced 0 (count=1)
+Producer: produced 1 (count=2)
+Producer: produced 2 (count=3)
+Producer: produced 3 (count=4)
+Producer: produced 4 (count=5)
+Producer: produced 5 (count=6)
+Producer: produced 6 (count=7)
+Producer: produced 7 (count=8)
+Producer: produced 8 (count=9)
+Producer: produced 9 (count=10)
+PID 70: consumer_task running...
+Consumer: consumed 9 (count=9)
+Consumer: consumed 8 (count=8)
+Consumer: consumed 7 (count=7)
+Consumer: consumed 6 (count=6)
+Consumer: consumed 5 (count=5)
+Consumer: consumed 4 (count=4)
+Consumer: consumed 3 (count=3)
+Consumer: consumed 2 (count=2)
+Consumer: consumed 1 (count=1)
+Consumer: consumed 0 (count=0)
+Producer: produced 10 (count=1)
+Producer: produced 11 (count=2)
+Producer: produced 12 (count=3)
+Producer: produced 13 (count=4)
+Producer: produced 14 (count=5)
+Producer: produced 15 (count=6)
+Producer: produced 16 (count=7)
+Producer: produced 17 (count=8)
+Producer: produced 18 (count=9)
+Producer: produced 19 (count=10)
+Producer finished.
+Consumer: consumed 19 (count=9)
+Consumer: consumed 18 (count=8)
+Consumer: consumed 17 (count=7)
+Consumer: consumed 16 (count=6)
+Consumer: consumed 15 (count=5)
+Consumer: consumed 14 (count=4)
+Consumer: consumed 13 (count=3)
+Consumer: consumed 12 (count=2)
+Consumer: consumed 11 (count=1)
+Consumer: consumed 10 (count=0)
+Consumer finished.
+Synchronization test completed
+
+===== All Lab5 Tests Passed! =====
+
+===== All Labs Complete =====
+Total interrupts received: 1006
+
+Press Ctrl-A then X to quit QEMU.
+QEMU: Terminated
+

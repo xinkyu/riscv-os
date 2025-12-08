@@ -1,0 +1,147 @@
+qemu-system-riscv64 -machine virt \
+	-nographic -kernel kernel.elf \
+	-drive file=fs.img,if=none,format=raw,id=fsimg \
+	-device virtio-blk-device,drive=fsimg,bus=virtio-mmio-bus.0\
+        -global virtio-mmio.force-legacy=false
+
+OpenSBI v1.5.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name             : riscv-virtio,qemu
+Platform Features         : medeleg
+Platform HART Count       : 1
+Platform IPI Device       : aclint-mswi
+Platform Timer Device     : aclint-mtimer @ 10000000Hz
+Platform Console Device   : uart8250
+Platform HSM Device       : ---
+Platform PMU Device       : ---
+Platform Reboot Device    : syscon-reboot
+Platform Shutdown Device  : syscon-poweroff
+Platform Suspend Device   : ---
+Platform CPPC Device      : ---
+Firmware Base             : 0x80000000
+Firmware Size             : 327 KB
+Firmware RW Offset        : 0x40000
+Firmware RW Size          : 71 KB
+Firmware Heap Offset      : 0x49000
+Firmware Heap Size        : 35 KB (total), 2 KB (reserved), 11 KB (used), 21 KB (free)
+Firmware Scratch Size     : 4096 B (total), 416 B (used), 3680 B (free)
+Runtime SBI Version       : 2.0
+
+Domain0 Name              : root
+Domain0 Boot HART         : 0
+Domain0 HARTs             : 0*
+Domain0 Region00          : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region01          : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region02          : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region03          : 0x0000000080040000-0x000000008005ffff M: (R,W) S/U: ()
+Domain0 Region04          : 0x0000000080000000-0x000000008003ffff M: (R,X) S/U: ()
+Domain0 Region05          : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06          : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07          : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address      : 0x0000000080200000
+Domain0 Next Arg1         : 0x0000000087e00000
+Domain0 Next Mode         : S-mode
+Domain0 SysReset          : yes
+Domain0 SysSuspend        : yes
+
+Boot HART ID              : 0
+Boot HART Domain          : root
+Boot HART Priv Version    : v1.12
+Boot HART Base ISA        : rv64imafdch
+Boot HART ISA Extensions  : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count       : 16
+Boot HART PMP Granularity : 2 bits
+Boot HART PMP Address Bits: 54
+Boot HART MHPM Info       : 16 (0x0007fff8)
+Boot HART Debug Triggers  : 2 triggers
+Boot HART MIDELEG         : 0x0000000000001666
+Boot HART MEDELEG         : 0x0000000000f0b509
+[2J[H===== Kernel Booting =====
+kinit: physical memory allocator initialized.
+kvminit: kernel page table created.
+kvminithart: virtual memory enabled.
+procinit: complete
+trap_init: stvec set to 0x0000000080200bf0
+virtio: magic=0x74726976 version=0x2 device=0x2 vendor=0x554d4551
+fs: size=4096 nblocks=4044 ninodes=300 nlog=30
+scheduler: starting on cpu 0
+===== main_task Started (PID 1) =====
+
+===== Starting Lab6 Tests =====
+
+=== Test 10: Basic System Calls ===
+Current PID (via syscall): 1
+Testing fork()...
+  [Parent] Forked child PID=2
+  [Child] Hello from child! PID=2
+  [Parent] Child 2 exited with status 42
+Basic system calls test passed
+
+=== Test 11: Parameter Passing ===
+  Write returned: 43 (expected 43)
+Parameter passing test passed
+
+=== Test 12: Security Test ===
+  Writing to invalid pointer 0x0000000000000000...
+  Result: -1 (Expected: -1)
+Security test passed: Invalid pointer correctly rejected
+
+=== Test 13: Syscall Performance ===
+  Running 10000 getpid() calls...
+  10000 getpid() calls took 319224 cycles
+  Average cycles per syscall: 31
+Performance test passed
+
+===== All Lab6 Tests Passed! =====
+
+===== Starting Lab7 Filesystem Tests =====
+
+=== FS Test 1: Integrity ===
+  1. Opening file for write...
+  Open success, fd=3
+  2. Writing data...
+  Write success
+  3. Re-opening for read...
+  Re-open success, fd=3
+  4. Reading data...
+  Read bytes: 18, Content: 'Hello, filesystem!'
+  5. Unlinking...
+Filesystem integrity test passed
+
+=== FS Test 2: Concurrent Access ===
+Concurrent access test completed
+
+=== FS Test 3: Crash Recovery (Simulated) ===
+Crash recovery simulation passed
+
+=== FS Test 4: Performance ===
+Small files (200 x 4B): 108513087 cycles
+Large file (4MB): 15060256 cycles
+
+=== Filesystem Debug Info ===
+Total blocks: 4096
+Data blocks: 4044
+Free blocks: 4039
+Free inodes: 297
+Buffer cache hits: 350608
+Buffer cache misses: 518
+=== Inode Usage ===
+inum=1 ref=1 type=1 size=3264
+inum=2 ref=1 type=2 size=43
+=== Disk I/O Statistics ===
+Disk reads: 518
+Disk writes: 15614
+===== Lab7 Filesystem Tests Completed =====
+
+===== All Labs Complete =====
+Press Ctrl-A then X to quit QEMU.
+QEMU: Terminated
+

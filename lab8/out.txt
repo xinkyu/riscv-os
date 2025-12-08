@@ -1,0 +1,266 @@
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/entry.o kernel/entry.S
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/main.o kernel/main.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/uart.o kernel/uart.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/console.o kernel/console.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/printf.o kernel/printf.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/klog.o kernel/klog.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/kalloc.o kernel/kalloc.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/vm.o kernel/vm.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/trap.o kernel/trap.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/kernelvec.o kernel/kernelvec.S
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/proc.o kernel/proc.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/swtch.o kernel/swtch.S
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/spinlock.o kernel/spinlock.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/sleeplock.o kernel/sleeplock.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/string.o kernel/string.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/syscall.o kernel/syscall.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/sysproc.o kernel/sysproc.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/sysfile.o kernel/sysfile.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/bio.o kernel/bio.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/log.o kernel/log.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/fs.o kernel/fs.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/file.o kernel/file.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/virtio_disk.o kernel/virtio_disk.c
+riscv64-unknown-elf-gcc -Wall -Werror -O -fno-omit-frame-pointer -ggdb -mcmodel=medany -ffreestanding -nostdlib -mno-relax -Ikernel/ -c -o kernel/test.o kernel/test.c
+riscv64-unknown-elf-ld -T kernel/kernel.ld -o kernel.elf kernel/entry.o kernel/main.o kernel/uart.o kernel/console.o kernel/printf.o kernel/klog.o kernel/kalloc.o kernel/vm.o kernel/trap.o kernel/kernelvec.o kernel/proc.o kernel/swtch.o kernel/spinlock.o kernel/sleeplock.o kernel/string.o kernel/syscall.o kernel/sysproc.o kernel/sysfile.o kernel/bio.o kernel/log.o kernel/fs.o kernel/file.o kernel/virtio_disk.o kernel/test.o
+dd if=/dev/zero of=fs.img bs=1024 count=4096
+qemu-system-riscv64 -machine virt \
+	-nographic -kernel kernel.elf \
+	-drive file=fs.img,if=none,format=raw,id=fsimg \
+	-device virtio-blk-device,drive=fsimg,bus=virtio-mmio-bus.0\
+        -global virtio-mmio.force-legacy=false
+
+OpenSBI v1.5.1
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+
+Platform Name             : riscv-virtio,qemu
+Platform Features         : medeleg
+Platform HART Count       : 1
+Platform IPI Device       : aclint-mswi
+Platform Timer Device     : aclint-mtimer @ 10000000Hz
+Platform Console Device   : uart8250
+Platform HSM Device       : ---
+Platform PMU Device       : ---
+Platform Reboot Device    : syscon-reboot
+Platform Shutdown Device  : syscon-poweroff
+Platform Suspend Device   : ---
+Platform CPPC Device      : ---
+Firmware Base             : 0x80000000
+Firmware Size             : 327 KB
+Firmware RW Offset        : 0x40000
+Firmware RW Size          : 71 KB
+Firmware Heap Offset      : 0x49000
+Firmware Heap Size        : 35 KB (total), 2 KB (reserved), 11 KB (used), 21 KB (free)
+Firmware Scratch Size     : 4096 B (total), 416 B (used), 3680 B (free)
+Runtime SBI Version       : 2.0
+
+Domain0 Name              : root
+Domain0 Boot HART         : 0
+Domain0 HARTs             : 0*
+Domain0 Region00          : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region01          : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region02          : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region03          : 0x0000000080040000-0x000000008005ffff M: (R,W) S/U: ()
+Domain0 Region04          : 0x0000000080000000-0x000000008003ffff M: (R,X) S/U: ()
+Domain0 Region05          : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06          : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07          : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address      : 0x0000000080200000
+Domain0 Next Arg1         : 0x0000000087e00000
+Domain0 Next Mode         : S-mode
+Domain0 SysReset          : yes
+Domain0 SysSuspend        : yes
+
+Boot HART ID              : 0
+Boot HART Domain          : root
+Boot HART Priv Version    : v1.12
+Boot HART Base ISA        : rv64imafdch
+Boot HART ISA Extensions  : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count       : 16
+Boot HART PMP Granularity : 2 bits
+Boot HART PMP Address Bits: 54
+Boot HART MHPM Info       : 16 (0x0007fff8)
+Boot HART Debug Triggers  : 2 triggers
+Boot HART MIDELEG         : 0x0000000000001666
+Boot HART MEDELEG         : 0x0000000000f0b509
+[2J[H===== Kernel Booting =====
+kinit: physical memory allocator initialized.
+kvminit: kernel page table created.
+kvminithart: virtual memory enabled.
+procinit: complete
+trap_init: stvec set to 0x00000000802018e0
+virtio: magic=0x74726976 version=0x2 device=0x2 vendor=0x554d4551
+Formatting filesystem...
+fs: size=4096 nblocks=4044 ninodes=300 nlog=30
+[klog] initialized (buffer=256, console-level=3)
+scheduler: starting on cpu 0
+===== main_task Started (PID 1) =====
+
+===== Starting Lab6 Tests =====
+
+=== Test 10: Basic System Calls ===
+Current PID (via syscall): 1
+Testing fork()...
+  [Parent] Forked child PID=2
+  [Child] Hello from child! PID=2
+[WARN][time=41787202][cpu=0 pid=2][proc] process 2 exiting status=42
+  [Parent] Child 2 exited with status 42
+Basic system calls test passed
+
+=== Test 11: Parameter Passing ===
+  Write returned: 43 (expected 43)
+Parameter passing test passed
+
+=== Test 12: Security Test ===
+  Writing to invalid pointer 0x0000000000000000...
+  Result: -1 (Expected: -1)
+Security test passed: Invalid pointer correctly rejected
+
+=== Test 13: Syscall Performance ===
+  Running 10000 getpid() calls...
+  10000 getpid() calls took 288339 cycles
+  Average cycles per syscall: 28
+Performance test passed
+
+===== All Lab6 Tests Passed! =====
+
+===== Starting Lab7 Filesystem Tests =====
+
+=== FS Test 1: Integrity ===
+  1. Opening file for write...
+  Open success, fd=3
+  2. Writing data...
+  Write success
+  3. Re-opening for read...
+  Re-open success, fd=3
+  4. Reading data...
+  Read bytes: 18, Content: 'Hello, filesystem!'
+  5. Unlinking...
+Filesystem integrity test passed
+
+=== FS Test 2: Concurrent Access ===
+[WARN][time=64609019][cpu=0 pid=3][proc] process 3 exiting status=0
+[WARN][time=88346620][cpu=0 pid=4][proc] process 4 exiting status=0
+[WARN][time=110984253][cpu=0 pid=5][proc] process 5 exiting status=0
+[WARN][time=131801434][cpu=0 pid=6][proc] process 6 exiting status=0
+Concurrent access test completed
+
+=== FS Test 3: Crash Recovery (Simulated) ===
+Crash recovery simulation passed
+
+=== FS Test 4: Performance ===
+Small files (200 x 4B): 85447583 cycles
+Large file (4MB): 15038746 cycles
+
+=== Filesystem Debug Info ===
+Total blocks: 4096
+Data blocks: 4044
+Free blocks: 4039
+Free inodes: 297
+Buffer cache hits: 149101
+Buffer cache misses: 4617
+=== Inode Usage ===
+inum=1 ref=1 type=1 size=3264
+inum=2 ref=1 type=2 size=43
+=== Disk I/O Statistics ===
+Disk reads: 4617
+Disk writes: 19780
+===== Lab7 Filesystem Tests Completed =====
+
+===== Starting Lab8 Kernel Logging Tests =====
+
+=== Lab8 Test 1: Ring Buffer Counters (测试环形缓冲区计数器) ===
+  Captured 3 new entries (total delta=3)
+
+=== Lab8 Test 2: Level Filtering (测试日志等级过滤) ===
+  Buffer accepted 1 ERROR-level entry
+
+=== Lab8 Test 3: Dump & Summary (测试日志回溯与摘要) ===
+  Dumping last 4 entries from kernel log:
+[DEBUG][time=269370388][cpu=0 pid=1][lab8] ring entry #2
+[DEBUG][time=269370426][cpu=0 pid=1][lab8] ring entry #3
+[DEBUG][time=269370447][cpu=0 pid=1][lab8] ring entry #4
+[DEBUG][time=269370466][cpu=0 pid=1][lab8] ring entry #5
+  Log summary snapshot:
+[klog] total=26 stored=24 overwritten=0 console=5 buffer_level=0 console_level=5 enabled=0 size=24
+
+=== Lab8 Test 4: Ring Buffer Overflow (测试缓冲区溢出与回绕) ===
+  Generating 306 log entries (buffer size is 256)...
+  [PASS] Overwritten counter increased by 74 (Expected behavior)
+  Dumping last 5 entries (Should show sequence #301 to #305):
+[INFO][time=269389717][cpu=0 pid=1][ovfl] overflow test message sequence #301
+[INFO][time=269389743][cpu=0 pid=1][ovfl] overflow test message sequence #302
+[INFO][time=269389770][cpu=0 pid=1][ovfl] overflow test message sequence #303
+[INFO][time=269389796][cpu=0 pid=1][ovfl] overflow test message sequence #304
+[INFO][time=269389823][cpu=0 pid=1][ovfl] overflow test message sequence #305
+
+=== Lab8 Test 5: Formatting & Truncation (测试格式化与截断) ===
+  Dumping formatting tests. Please verify manually:
+  1. Check if Dec/Hex/Str/Ptr are correct.
+  2. Check if 'LONG:' message is truncated (not crashing the kernel).
+[INFO][time=269400097][cpu=0 pid=1][fmt] CHECK: Dec=-12345 Hex=abcd1234 Str=HelloKernel Ptr=0x80200000
+[INFO][time=269400927][cpu=0 pid=1][trunc] LONG: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+=== Lab8 Test 6: sys_klog Streaming (用户态循环读取) ===
+  [user] chunk 0 (122 bytes):
+[INFO][t=269382524][ovfl] overflow test message sequence #64
+[INFO][t=269382550][ovfl] overflow test message sequence #65
+  [user] chunk 1 (122 bytes):
+[INFO][t=269382576][ovfl] overflow test message sequence #66
+[INFO][t=269382602][ovfl] overflow test message sequence #67
+  [user] chunk 2 (122 bytes):
+[INFO][t=269382628][ovfl] overflow test message sequence #68
+[INFO][t=269382654][ovfl] overflow test message sequence #69
+  [user] chunk 3 (122 bytes):
+[INFO][t=269382680][ovfl] overflow test message sequence #70
+[INFO][t=269382706][ovfl] overflow test message sequence #71
+  [user] chunk 4 (122 bytes):
+[INFO][t=269382732][ovfl] overflow test message sequence #72
+[INFO][t=269382760][ovfl] overflow test message sequence #73
+  [user] chunk 5 (122 bytes):
+[INFO][t=269382786][ovfl] overflow test message sequence #74
+[INFO][t=269382812][ovfl] overflow test message sequence #75
+  [user] chunk 6 (122 bytes):
+[INFO][t=269382838][ovfl] overflow test message sequence #76
+[INFO][t=269382864][ovfl] overflow test message sequence #77
+  [user] chunk 7 (122 bytes):
+[INFO][t=269382890][ovfl] overflow test message sequence #78
+[INFO][t=269382921][ovfl] overflow test message sequence #79
+  [user] chunk 8 (122 bytes):
+[INFO][t=269382947][ovfl] overflow test message sequence #80
+[INFO][t=269382973][ovfl] overflow test message sequence #81
+  [user] chunk 9 (122 bytes):
+[INFO][t=269382999][ovfl] overflow test message sequence #82
+[INFO][t=269383025][ovfl] overflow test message sequence #83
+  [user] chunk 10 (122 bytes):
+[INFO][t=269383050][ovfl] overflow test message sequence #84
+[INFO][t=269383077][ovfl] overflow test message sequence #85
+  [user] chunk 11 (122 bytes):
+[INFO][t=269383105][ovfl] overflow test message sequence #86
+[INFO][t=269383131][ovfl] overflow test message sequence #87
+  [user] chunk 12 (122 bytes):
+[INFO][t=269383157][ovfl] overflow test message sequence #88
+[INFO][t=269383183][ovfl] overflow test message sequence #89
+  [user] chunk 13 (122 bytes):
+[INFO][t=269383209][ovfl] overflow test message sequence #90
+[INFO][t=269383234][ovfl] overflow test message sequence #91
+  [user] chunk 14 (122 bytes):
+[INFO][t=269383261][ovfl] overflow test message sequence #92
+[INFO][t=269383286][ovfl] overflow test message sequence #93
+  [user] chunk 15 (122 bytes):
+[INFO][t=269383312][ovfl] overflow test message sequence #94
+[INFO][t=269383338][ovfl] overflow test message sequence #95
+  Total bytes streamed via sys_klog: 1952
+===== Lab8 Kernel Logging Tests Completed =====
+
+===== All Labs Complete =====
+Press Ctrl-A then X to quit QEMU.
+QEMU: Terminated
+
